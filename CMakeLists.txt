@@ -1,0 +1,97 @@
+# cco - coroutine library for C
+# Copyright (C) 2022 Domenico Teodonio at dteod@protonmail.com
+
+# cco is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# cco is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with cco.  If not, see <https://www.gnu.org/licenses/>.
+
+cmake_minimum_required(VERSION 3.16)
+
+project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C ASM)
+
+get_property(TARGET_SUPPORTS_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
+
+default_setting(CCO_STATIC_MALLOC_PAGE_SIZE 4096)
+default_setting(CCO_STATIC_MALLOC_N_PAGES 0)
+default_setting(CCO_STATIC_MALLOC_THREAD_SAFE 1)
+default_setting(CCO_STATIC_MALLOC_THREAD_SAFE_LOCK_FREE 1)
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE)
+    message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
+endif()
+
+function(add_cco_library LIBTYPE)
+    string(TOLOWER ${LIBTYPE} LIBNAME)
+    string(PREPEND LIBNAME "cco_")
+    add_library(${LIBNAME} ${LIBTYPE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/coroutine.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/version.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/errno.c
+        # ${CMAKE_CURRENT_SOURCE_DIR}/src/arch/${CMAKE_SYSTEM_PROCESSOR}/init.c
+        # ${CMAKE_CURRENT_SOURCE_DIR}/src/arch/${CMAKE_SYSTEM_PROCESSOR}/context.S
+    )
+    add_library(cco::${LIBNAME} ALIAS ${LIBNAME})
+    target_link_libraries(${LIBNAME} PRIVATE cco_arch_${CMAKE_SYSTEM_PROCESSOR})
+    target_sources(${LIBNAME} PUBLIC FILE_SET HEADERS
+        BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/api.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/arch.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/coroutine.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/errno.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/version.h
+    )
+    target_include_directories(${LIBNAME} 
+        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_features(${LIBNAME} PRIVATE c_std_11)
+
+    if(LIBTYPE STREQUAL "STATIC")
+        set(STATIC_VALUE 1)
+        target_compile_definitions(${LIBNAME} PRIVATE CCO_SHARED=0)
+    else()
+        set(STATIC_VALUE 0)
+        target_compile_definitions(${LIBNAME} PRIVATE CCO_SHARED=1)
+    endif()
+    target_compile_definitions(
+        ${LIBNAME} PRIVATE
+        CCO_INTERNAL=1
+        CCO_PAGE_SIZE=${CCO_PAGE_SIZE}
+        CCO_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        CCO_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        CCO_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    )
+
+    set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco")
+
+    if(WIN32 AND STATIC_VALUE)
+        set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco-static")
+    endif()
+
+    # target_hard_compilation(${LIBNAME} PRIVATE)
+endfunction()
+
+add_cco_library(STATIC)
+if(TARGET_SUPPORTS_SHARED_LIBS)
+    add_cco_library(SHARED)
+endif()
+
+function(create_cco_test TESTNAME)
+    add_executable(cco_arch_test ${CMAKE_CURRENT_SOURCE_DIR}/test/${TESTNAME}.c)
+    target_link_libraries(cco_arch_test PRIVATE cco_static cco_arch_${CMAKE_SYSTEM_PROCESSOR})
+    target_include_directories(cco_arch_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    # target_hard_compilation(cco_arch_test PRIVATE)
+    add_test(NAME cco_arch_test COMMAND cco_arch_test)
+endfunction()
+
+create_cco_test(${CMAKE_SYSTEM_PROCESSOR})
