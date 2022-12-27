@@ -16,7 +16,69 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C ASM)
+if(DEFINED CMAKE_TOOLCHAIN_FILE)
+    message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
+else()
+    # We are stuck in a loop: the CMAKE_HOST_SYSTEM_PROCESSOR and CMAKE_SYSTEM_PROCESSOR variables will be
+    # set only after a call to project() and we need to know the processor architecture in advance to select the correct toolchain
+    # file based on the host architecture. Here are the possible solutions:
+    #   1. Call project() to get the processor architecture and then call project() again with the correct toolchain file;
+    #   2. Use OS-specific commands to get the processor architecture and then call project() with the correct toolchain file.
+    # We choose the second solution because it is more portable.
+    if(WIN32)
+        execute_process(COMMAND set PROCESSOR_ARCHITECTURE OUTPUT_VARIABLE PROCESSOR_ARCHITECTURE OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(PROCESSOR_ARCHITECTURE STREQUAL "AMD64")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
+        elseif(PROCESSOR_ARCHITECTURE STREQUAL "x86")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "x86")
+        elseif(PROCESSOR_ARCHITECTURE STREQUAL "ARM")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "arm")
+        elseif(PROCESSOR_ARCHITECTURE STREQUAL "ARM64")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "aarch64")
+        else()
+            message(FATAL_ERROR "Unsupported Visual Studio platform: ${CMAKE_VS_PLATFORM_NAME}")
+        endif()
+        unset(PROCESSOR_ARCHITECTURE)
+    elseif(UNIX)
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE HOST_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(HOST_ARCH STREQUAL "x86_64")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
+        elseif(HOST_ARCH STREQUAL "i386" 
+            OR HOST_ARCH STREQUAL "i486" 
+            OR HOST_ARCH STREQUAL "i586" 
+            OR HOST_ARCH STREQUAL "i686")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "x86")
+        elseif(HOST_ARCH STREQUAL "armv7l"
+            OR HOST_ARCH STREQUAL "armv7b"
+            OR HOST_ARCH STREQUAL "armv7a"
+            OR HOST_ARCH STREQUAL "armv7r"
+            OR HOST_ARCH STREQUAL "armv7m"
+            OR HOST_ARCH STREQUAL "armv8l" 
+            OR HOST_ARCH STREQUAL "armv8b"
+            OR HOST_ARCH STREQUAL "armv8a"
+            OR HOST_ARCH STREQUAL "armv8r"
+            OR HOST_ARCH STREQUAL "armv8m")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "arm")
+        elseif(PROCESSOR_ARCHITECTURE STREQUAL "aarch64")
+            set(CMAKE_HOST_SYSTEM_PROCESSOR "aarch64")
+        elseif(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/${HOST_ARCH}-${CMAKE_HOST_SYSTEM_NAME}.cmake)
+            message(FATAL_ERROR "Unsupported platform: ${HOST_ARCH}")
+        endif()
+        unset(HOST_ARCH)
+    else()
+        message(FATAL_ERROR "Unsupported host operating system: ${CMAKE_HOST_SYSTEM_NAME}")
+    endif()
+
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME}.cmake)
+        message(STATUS "Toolchain file not defined, using host-default toolchain file: ${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME}.cmake")
+        set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME}.cmake)
+    else()
+        message(FATAL_ERROR "Toolchain file not defined and host-default toolchain file not found: ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME}.cmake")
+        include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DefaultSetting.cmake)
+    endif()
+endif()
+
+project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C)
 
 get_property(TARGET_SUPPORTS_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
 
@@ -25,9 +87,7 @@ default_setting(CCO_STATIC_MALLOC_N_PAGES 0)
 default_setting(CCO_STATIC_MALLOC_THREAD_SAFE 1)
 default_setting(CCO_STATIC_MALLOC_THREAD_SAFE_LOCK_FREE 1)
 
-if(DEFINED CMAKE_TOOLCHAIN_FILE)
-    message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
-endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TargetHardCompilation.cmake)
 
 function(add_cco_library LIBTYPE)
     string(TOLOWER ${LIBTYPE} LIBNAME)
@@ -36,8 +96,6 @@ function(add_cco_library LIBTYPE)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/coroutine.c
         ${CMAKE_CURRENT_SOURCE_DIR}/src/version.c
         ${CMAKE_CURRENT_SOURCE_DIR}/src/errno.c
-        # ${CMAKE_CURRENT_SOURCE_DIR}/src/arch/${CMAKE_SYSTEM_PROCESSOR}/init.c
-        # ${CMAKE_CURRENT_SOURCE_DIR}/src/arch/${CMAKE_SYSTEM_PROCESSOR}/context.S
     )
     add_library(cco::${LIBNAME} ALIAS ${LIBNAME})
     target_link_libraries(${LIBNAME} PRIVATE cco_arch_${CMAKE_SYSTEM_PROCESSOR})
@@ -78,7 +136,7 @@ function(add_cco_library LIBTYPE)
         set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco-static")
     endif()
 
-    # target_hard_compilation(${LIBNAME} PRIVATE)
+    target_hard_compilation(${LIBNAME} PRIVATE)
 endfunction()
 
 add_cco_library(STATIC)

@@ -17,6 +17,4 @@
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86)
 
-set(CMAKE_C_COMPILER i686-w64-mingw32-gcc)
-
-set(CMAKE_EXE_LINKER_FLAGS "-Wl,--subsystem,windows")
+# set(CMAKE_EXE_LINKER_FLAGS "-Wl,--subsystem,windows")
