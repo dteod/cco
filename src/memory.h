@@ -24,16 +24,11 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 always_inline CCO_PRIVATE void*
 cco_alloc(size_t size)
 {
-    void* ptr = malloc(size);
-    if(ptr) {
-        printf("allocated %zu bytes at %p (0x%lx to 0x%lx))\n", size, ptr, (unsigned long)ptr, (unsigned long)ptr + size);
-    }
-    return ptr;
+    return malloc(size);
     // TODO use a custom allocator for static sizes
 }
 

@@ -32,6 +32,8 @@
 
 #include <stdio.h>
 
+cco_coroutine* coroutines[2];
+
 void
 hello(void* arg)
 {
@@ -49,6 +51,8 @@ hello_loop(void* arg)
 {
     for(int i = 0; i != 10; ++i) {
         hello_inner((const char*)arg, i);
+        printf("Coroutine 0 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[0])]);
+        printf("Coroutine 1 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[1])]);
         cco_yield(&i);
     }
 }
@@ -56,10 +60,11 @@ hello_loop(void* arg)
 int
 main()
 {
-    cco_coroutine* coroutines[2];
-
     for(int i = 0; i != 2; ++i) {
-        coroutines[i] = cco_coroutine_create(1024);
+        /*  Values below 4096 crash when trying to use printf. I suspect printf allocates some buffer on the stack,
+            and using a stack that is too small causes a stack overflow.
+        */
+        coroutines[i] = cco_coroutine_create(4096);
     }
 
     cco_coroutine_start(coroutines[0], hello_loop, "coroutine 0");
@@ -68,8 +73,8 @@ main()
     for(int i = 0; i != 10; ++i) {
         cco_resume(coroutines[0]);
         cco_resume(coroutines[1]);
-        printf("Coroutine 0 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[0])]);
-        printf("Coroutine 1 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[1])]);
+        printf("(main) Coroutine 0 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[0])]);
+        printf("(main) Coroutine 1 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[1])]);
     }
     cco_coroutine_destroy(coroutines[0]);
     cco_coroutine_destroy(coroutines[1]);

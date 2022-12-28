@@ -90,7 +90,11 @@ else()
 endif()
 get_property(TARGET_SUPPORTS_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
 
-default_compile_setting(cco DEBUG 0)
+if(CMAKE_BUILD_TYPE STREQUAL DEBUG)
+    default_compile_setting(cco DEBUG 1)
+else()
+    default_compile_setting(cco DEBUG 0)
+endif()
 
 default_compile_setting(cco STATIC_MALLOC_N_PAGES 0)
 default_compile_setting(cco STATIC_MALLOC_PAGE_SIZE 4096)
