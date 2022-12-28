@@ -17,10 +17,10 @@
 # Function to enable all warnings and treat them as errors for a target, compiler-agnostic
 function(target_hard_compilation tgt scope)
     target_compile_options(${tgt} ${scope}
-        $<$<CXX_COMPILER_ID:GNU>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
-        $<$<CXX_COMPILER_ID:Clang>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
-        $<$<CXX_COMPILER_ID:AppleClang>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
-        $<$<CXX_COMPILER_ID:Intel>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
-        $<$<CXX_COMPILER_ID:MSVC>: /W4 /WX>
+        $<$<C_COMPILER_ID:GNU>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
+        $<$<C_COMPILER_ID:Clang>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
+        $<$<C_COMPILER_ID:AppleClang>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
+        $<$<C_COMPILER_ID:Intel>: -Wall -Wextra -Wpedantic --pedantic-errors -Werror>
+        $<$<C_COMPILER_ID:MSVC>: /W4 /WX>
     )
 endfunction()
