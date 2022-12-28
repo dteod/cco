@@ -61,25 +61,24 @@
  *
  */
 struct cco_cpu_context {
-#if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
+    /* Usually eax and ebx are considered scratch registers, so storing them is just overhead.
+     * I have to check the assembly generated on each function calling cco_cswitch; eax for sure, ebx maybe.
+     */
     void* eax;
     void* ebx;
-#endif
     /* ecx and edx are used to store the function parameters in fastcall ABI, so they are not exchanged
     void*   ecx;
     void*   edx;
     */
-#if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
     void* esi;
     void* edi;
     void* ebp;
-#endif
     void* esp;
     void* eip;
-#if CCO_CSWITCH_x86_EXCHANGE_FLAGS_REGISTER
+#if CCO_x86_EXCHANGE_FLAGS_REGISTER
     void* eflags;
 #endif
-#if CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
+#if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
     uint8_t fxsr[512];
 #endif
 };
@@ -93,7 +92,7 @@ struct cco_cpu_context {
  */
 CCO_PRIVATE uint32_t cco_x86_cpu_context_size;
 
-#if CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS && CCO_CSWITCH_x86_USE_HAS_FXSR
+#if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS && CCO_x86_USE_HAS_FXSR
 /**
  * @brief Whether the CPU supports fxsave. Initialized in cco_init() and cached, used in cco_cswitch().
  * 
@@ -149,6 +148,7 @@ cco_prepare_coroutine(cco_coroutine* coroutine)
             movl 0x8(%esp), %eax
     */
     ctx->esp = (char*)ctx->esp - 2 * sizeof(ctx->esp);
+    ctx->ebp = (char*)ctx->esp + sizeof(ctx->esp);
 }
 
 /**
@@ -160,38 +160,40 @@ cco_prepare_coroutine(cco_coroutine* coroutine)
  * the stack pointer and instruction pointer, the FPU registers, the floating-point control registers,
  * the x87/MMX/XMM registers (if available), and the flags register. In particular:
  * - the stack pointer and instruction pointer are always exchanged, because they correspond to the context by itself;
- * - the general purpose registers are exchanged if @ref CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS is set to 1;
+ * - the general purpose registers are exchanged if @ref CCO_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS is set to 1;
  * - the FPU registers, the floating-point control registers, and the x87/MMX/XMM registers are exchanged only
- * - the flags register is exchanged if @ref CCO_CSWITCH_x86_EXCHANGE_FLAGS_REGISTER is set to 1;
- *   if @ref CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS is set to 1;
- *   - in particular, if CCO_CSWITCH_x86_USE_HAS_FXSR is set, the cpuid check for fxsave/fxrstor is performed once at startup,
+ * - the flags register is exchanged if @ref CCO_x86_EXCHANGE_FLAGS_REGISTER is set to 1;
+ *   if @ref CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS is set to 1;
+ *   - in particular, if CCO_x86_USE_HAS_FXSR is set, the cpuid check for fxsave/fxrstor is performed once at startup,
  *     and later usages of such instructions are checked against the cached value; these instructions are not used if
  *     the CPU does not support them (pretty rare nowadays).
  * 
  * @param prev the current CPU context to store (and suspend)
  * @param next the CPU context to load (and resume)
  */
-CCO_PRIVATE no_inline void fastcall
+CCO_PRIVATE no_inline void fastcall naked
 cco_cswitch(cco_cpu_context* restrict prev, cco_cpu_context* restrict next)
 {
+    // We mark the arguments as unused to avoid warnings, but we actually use them in the assembly code.
+    (void)prev;
+    (void)next;
+    // I used inline assembly at first using prev/next and their fields but
+    // 1. I obtained suboptimal code
+    // 2. The code could not work when using -O3
+    // So eventually I'm writing the assembly code by hand.
 #if defined(__GNUC__) || defined(__clang__)
-#  if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
-    __asm__ volatile("pushl %eax");
-    __asm__ volatile("movl %0, %%eax" ::"m"(prev));
-    __asm__ volatile("movl %ebx, 0x4(%eax)");
-    __asm__ volatile("movl %esi, 0x8(%eax)");
-    __asm__ volatile("movl %edi, 0xc(%eax)");
-    __asm__ volatile("movl %ebp, 0x10(%eax)");
-    __asm__ volatile("movl %eax, %ebx");
-    __asm__ volatile("popl %eax");
-    __asm__ volatile("movl %eax, (%ebx)");
-#  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FLAGS_REGISTER
+    // ecx contains the address of prev, edx contains the address of next.
+    __asm__ volatile("movl %eax, (%ecx)");
+    __asm__ volatile("movl %ebx, 0x4(%ecx)");
+    __asm__ volatile("movl %esi, 0x8(%ecx)");
+    __asm__ volatile("movl %edi, 0xc(%ecx)");
+    __asm__ volatile("movl %ebp, 0x10(%ecx)");
+#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
     __asm__ volatile("pushf");
     __asm__ volatile("popl %0" : "=r"(prev->eflags));
 #  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_CSWITCH_x86_USE_HAS_FXSR
+#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
+#    if CCO_x86_USE_HAS_FXSR
     if(cco_x86_has_fxsr) {
         __asm__ volatile("fxsave %0" ::"m"(prev->fxsr) : "memory");
         __asm__ volatile("fxrstor %0" ::"m"(next->fxsr) : "memory");
@@ -210,29 +212,25 @@ cco_cswitch(cco_cpu_context* restrict prev, cco_cpu_context* restrict next)
     );
 #    endif
 #  endif
-    void* ip = __builtin_return_address(0);
-    __asm__ volatile("movl %%esp, %0" ::"m"(prev->esp));
-    __asm__ volatile("movl %[ip], %%ebx\n\tmovl %%ebx, %[eip]" ::[ip] "m"(ip), [eip] "m"(prev->eip));
-    __asm__ volatile("movl %0, %%esp" ::"m"(next->esp));
-    __asm__ volatile("movl %0, %%ebx\n\tmovl %%ebx, (%%esp)" ::"m"(next->eip));
-#  if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
-    __asm__ volatile("movl %0, %%eax\n\t" ::"m"(next));
-    __asm__ volatile("movl 0x4(%eax),%ebx");
-    __asm__ volatile("movl 0x8(%eax),%esi");
-    __asm__ volatile("movl 0xc(%eax),%edi");
-    __asm__ volatile("movl 0x10(%eax),%ebp");
-    __asm__ volatile("movl (%eax), %eax");
-#  endif
+    __asm__ volatile("movl %esp, 0x14(%ecx)");
+    __asm__ volatile("popl %ebx \n\t movl %ebx, 0x18(%ecx)");
+    __asm__ volatile("movl 0x14(%edx), %esp");
+    __asm__ volatile("movl 0x18(%edx), %ebx \n\t movl %ebx, 0x0(%esp)");
+    __asm__ volatile("movl 0x10(%edx), %ebp");
+    __asm__ volatile("movl 0x0c(%edx), %edi");
+    __asm__ volatile("movl 0x08(%edx), %esi");
+    __asm__ volatile("movl 0x04(%edx), %ebx");
+    __asm__ volatile("movl 0x00(%edx), %eax");
     __asm__ volatile("ret");
 #elif defined(_MSC_VER)
-#  if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
+#  if CCO_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
     // code for eax, ebx, esi, edi, ebp
 #  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FLAGS_REGISTER
+#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
     // code for eflags
 #  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_CSWITCH_x86_USE_HAS_FXSR
+#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
+#    if CCO_x86_USE_HAS_FXSR
     // code using cco_x86_has_fxsr
 #    else
     // code using x86_supports_fxsr()
@@ -240,14 +238,14 @@ cco_cswitch(cco_cpu_context* restrict prev, cco_cpu_context* restrict next)
 #  endif
     // code for esp/eip
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
-#  if CCO_CSWITCH_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
+#  if CCO_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
     // code for eax, ebx, esi, edi, ebp
 #  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FLAGS_REGISTER
+#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
     // code for eflags
 #  endif
-#  if CCO_CSWITCH_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_CSWITCH_x86_USE_HAS_FXSR
+#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
+#    if CCO_x86_USE_HAS_FXSR
     // code using cco_x86_has_fxsr
 #    else
     // code using x86_supports_fxsr()

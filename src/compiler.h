@@ -51,4 +51,12 @@
 #  define thread_local _Thread_local
 #endif
 
+#if defined(__GNUC__) || defined(__clang__) || defined(__ICC) || defined(__INTEL_COMPILER)
+#  define naked __attribute__((naked))
+#elif defined(_MSC_VER)
+#  define naked __declspec(naked)
+#else
+#  error Unsupported compiler
+#endif
+
 #endif

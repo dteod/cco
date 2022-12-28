@@ -39,19 +39,38 @@ hello(void* arg)
 }
 
 void
-black_box_test()
+hello_inner(const char* arg, int i)
 {
-    cco_coroutine* coroutine = cco_coroutine_create(1024);
-    hello("black_box_test (in)");
-    cco_coroutine_start(coroutine, hello, "coroutine");
-    hello("black_box_test (out)");
-    cco_coroutine_destroy(coroutine);
+    printf("Hello from %s (%d)\n", arg, i);
+}
+
+void
+hello_loop(void* arg)
+{
+    for(int i = 0; i != 10; ++i) {
+        hello_inner((const char*)arg, i);
+        cco_yield(&i);
+    }
 }
 
 int
 main()
 {
-    hello("main (enter)");
-    black_box_test();
-    hello("main (exit)");
+    cco_coroutine* coroutines[2];
+
+    for(int i = 0; i != 2; ++i) {
+        coroutines[i] = cco_coroutine_create(1024);
+    }
+
+    cco_coroutine_start(coroutines[0], hello_loop, "coroutine 0");
+    cco_coroutine_start(coroutines[1], hello_loop, "coroutine 1");
+
+    for(int i = 0; i != 10; ++i) {
+        cco_resume(coroutines[0]);
+        cco_resume(coroutines[1]);
+        printf("Coroutine 0 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[0])]);
+        printf("Coroutine 1 state: %s\n", cco_coroutine_state_strings[cco_coroutine_get_state(coroutines[1])]);
+    }
+    cco_coroutine_destroy(coroutines[0]);
+    cco_coroutine_destroy(coroutines[1]);
 }

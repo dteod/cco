@@ -108,7 +108,7 @@ CCO_PRIVATE thread_local cco_coroutine cco_main_coroutine;
  * 
  * @note It does not need to be atomic because it is thread-local.
  */
-CCO_PRIVATE thread_local cco_coroutine* cco_current_coroutine = NULL;
+CCO_PRIVATE thread_local cco_coroutine* volatile cco_current_coroutine = NULL;
 
 CCO_PRIVATE bool
 cco_await_true_callback(cco_coroutine* coroutine, void* argument)
@@ -139,6 +139,13 @@ cco_init()
     cco_main_coroutine.context = &cco_main_context;
     cco_main_coroutine.state   = CCO_COROUTINE_STATE_RUNNING;
     cco_current_coroutine      = &cco_main_coroutine;
+
+    /*
+     * The following is a hack to avoid a random crash happening on printf ran from a coroutine.
+     * The crash happens because the stack is not initialized, and the printf function tries to
+     * access the stack to print the string.
+     */
+    printf("%s", "");
 }
 
 CCO_API_INTERNAL cco_coroutine*
@@ -227,7 +234,8 @@ cco_coroutine_start(cco_coroutine* coroutine, cco_coroutine_callback callback, v
                 coroutine->await_ready      = cco_await_suspend_always;
                 coroutine->await_on_suspend = NULL;
                 cco_prepare_coroutine(coroutine);
-                cco_cswitch(coroutine->caller->context, (cco_current_coroutine = coroutine)->context);
+                cco_current_coroutine = coroutine;
+                cco_cswitch(coroutine->caller->context, coroutine->context);
                 /*
                     Notice that after cco_cswitch we will return in the context of the coroutine, hence we will
                     come back to this context only when the coroutine will yield or return (explicitly or implicitly).
@@ -345,6 +353,8 @@ cco_await(void* arg)
 CCO_API_INTERNAL void
 cco_await_with(cco_await_callback ready, cco_await_callback on_suspend, void* arg)
 {
+    cco_cpu_context* context = cco_current_coroutine->context;
+    cco_coroutine*   caller  = cco_current_coroutine->caller;
     if(cco_current_coroutine != &cco_main_coroutine) {
         if(!(ready || on_suspend)) {
             cco_errno_instance = CCO_ERROR_INVALID_ARGUMENT;
@@ -367,17 +377,35 @@ cco_await_with(cco_await_callback ready, cco_await_callback on_suspend, void* ar
         cco_errno_instance = CCO_ERROR_INVALID_CONTEXT;
     }
 suspend:
-    cco_cpu_context* context = cco_current_coroutine->context;
-    cco_coroutine*   caller  = cco_current_coroutine->caller;
     cco_cswitch(context, (cco_current_coroutine = caller)->context);
 }
+
+CCO_API_INTERNAL const char* const cco_coroutine_state_strings[] = {
+    [CCO_COROUTINE_STATE_NONE]        = "none",
+    [CCO_COROUTINE_STATE_RUNNING]     = "running",
+    [CCO_COROUTINE_STATE_SUSPENDED]   = "suspended",
+    [CCO_COROUTINE_STATE_UNSCHEDULED] = "unscheduled",
+};
 
 CCO_API_INTERNAL cco_coroutine_state
 cco_coroutine_get_state(const cco_coroutine* coroutine)
 {
     if(coroutine) {
         cco_errno_instance = CCO_OK;
-        return coroutine->state;
+        switch(coroutine->state) {
+        case CCO_COROUTINE_STATE_RUNNING:      // fallthrough;
+        case CCO_COROUTINE_STATE_SUSPENDED:    // fallthrough;
+        case CCO_COROUTINE_STATE_UNSCHEDULED:  // fallthrough;
+            {
+                cco_errno_instance = CCO_OK;
+                return coroutine->state;
+            }
+        default:
+            {
+                cco_errno_instance = CCO_ERROR_INVALID_ARGUMENT;
+                return CCO_COROUTINE_STATE_NONE;
+            }
+        }
     }
     else {
         cco_errno_instance = CCO_ERROR_INVALID_ARGUMENT;

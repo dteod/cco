@@ -375,6 +375,8 @@ typedef enum {
     CCO_COROUTINE_STATE_RUNNING,     /**< It is currently running. */
 } cco_coroutine_state;
 
+CCO_API const char* const cco_coroutine_state_strings[];
+
 /**
  * @brief Returns the coroutine's execution state.
  * 
