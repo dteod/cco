@@ -23,7 +23,7 @@
 #include "compiler.h"
 
 #include <stddef.h>
-#include <stdio.h>
+#include <stdlib.h>
 
 always_inline CCO_PRIVATE void*
 cco_alloc(size_t size)

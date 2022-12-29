@@ -91,50 +91,26 @@ typedef void* cco_coroutine_promise;
  */
 typedef void (*cco_coroutine_callback)(void* argument);
 
-typedef struct {
-    size_t                             stack_size;
-    cco_architecture_specific_settings architecture_specific_settings;
-} cco_coroutine_settings;
-
 /**
  * @brief Creates a new coroutine using compile-time architecture-specific settings.
  * 
  * @details This function creates a new coroutine with the given stack size and the pointer to the function to execute
  * using the context switch settings defined at compile-time, and returns a pointer to the newly created coroutine.
+ * Architecture-specific settings can be actually passed to this function, in order for the underlying
+ * context switch implementation to be able to use them. These usually include any architecture-specific registers
+ * that must be preserved across context switches (e.g. segment registers on x86). Use NULL to use default settings defined
+ * at compile-time.
  *  
- * @note The coroutine is created in a terminated state, on order for it to be started. Resuming it is undefined behavior.
- * 
- * @note The stack size will be rounded up to the nearest multiple of the system's page size.
+ * @note The coroutine is created in a terminated state, in order for it to be started. Resuming it is undefined behavior.
  * 
  * @param stack_size The size of the stack to allocate for the coroutine.
- * @param function The function to execute in the coroutine.
- * @param argument The argument to pass to the function.
+ * @param settings A pointer to a cco_coroutine_settings struct containing the coroutine settings.
  * @return cco_coroutine* A pointer to the newly created coroutine, NULL on error.
  * 
  * @retval CCO_OK
  * @retval CCO_ERROR_NO_MEMORY
  */
-CCO_API cco_coroutine* cco_coroutine_create(size_t stack_size);
-
-/**
- * @brief Creates a new coroutine setting both coroutine and architecture-specific settings at runtime.
- * 
- * @details This function creates a new coroutine with the given stack size and the pointer to the function to execute
- * using the context switch settings defined at compile-time, and returns a pointer to the newly created coroutine.
- * Differently from cco_coroutine_create, architecture-specific settings can be actually passed to this function,
- * in order for the underlying context switch implementation to be able to use them. These usually include any
- * architecture-specific registers that must be preserved across context switches (e.g. segment registers on x86).
- * 
- * @note The coroutine is created in a suspended state. It must be resumed to start its execution.
- * 
- * @note The stack size will be rounded up to the nearest multiple of the system's page size.
- * 
- * @param settings A pointer to a cco_coroutine_settings struct containing the coroutine settings.
- * @return cco_coroutine* A pointer to the newly created coroutine.
- * 
- * @retval NULL If the coroutine could not be created.
- */
-CCO_API cco_coroutine* cco_coroutine_create_full(cco_coroutine_settings* settings);
+CCO_API cco_coroutine* cco_coroutine_create(size_t stack_size, const cco_architecture_specific_settings* settings);
 
 /**
  * @brief Destroys the given coroutine.

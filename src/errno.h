@@ -22,6 +22,14 @@
 #include "cco.h"
 #include "compiler.h"
 
-extern thread_local cco_error cco_errno_instance;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+cco_error* cco_errno_location();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

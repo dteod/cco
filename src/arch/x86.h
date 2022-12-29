@@ -61,44 +61,140 @@
  *
  */
 struct cco_cpu_context {
-    /* Usually eax and ebx are considered scratch registers, so storing them is just overhead.
-     * I have to check the assembly generated on each function calling cco_cswitch; eax for sure, ebx maybe.
-     */
-    void* eax;
-    void* ebx;
-    /* ecx and edx are used to store the function parameters in fastcall ABI, so they are not exchanged
+    /*  eax is caller-saved, while ecx and edx are used to store the function parameters in fastcall ABI,
+        so we do not need to save or restore them.
+    void*   eax;
     void*   ecx;
     void*   edx;
     */
+    void* ebx;
     void* esi;
     void* edi;
     void* ebp;
     void* esp;
     void* eip;
-#if CCO_x86_EXCHANGE_FLAGS_REGISTER
-    void* eflags;
-#endif
-#if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-    uint8_t fxsr[512];
-#endif
+
+    /*  All of the following registers are to be enabled via register-specific compile-time settings.
+        This and the following comments expose the registers as documentation only; the size of the struct to be allocated
+        will be calculated at runtime according to the x86-specific runtime settings of the chosen coroutine, and
+        only using the registers enabled by the compile-time settings. The cco_cswitch function (responsible of
+        storing and restoring the context) will also use the runtime settings, to determine which registers to save and restore.
+    */
+
+    /* Eflags register.
+    uint32_t eflags;
+    */
+
+    // union fpu_mmx_sse {
+    // struct no_sse {
+    /* FPU/MMX registers. MMX is fully contained in MMX.
+            uint16_t fpu_status;                                // 16-bit
+            uint16_t fpu_control;                               // 16-bit
+            uint16_t fpu_tag_word;                              // 16-bit
+            struct { uint16_t high, uint32_t low; } fpu_ip;     // 48-bit
+            struct { uint16_t high, uint32_t low; } fpu_dp;     // 48-bit                  
+            uint16_t fpu_opcode;                                // 11-bit
+            struct { uint16_t low; uint32_t high; } st[8];      // 8 registers of 80-bit each
+            */
+
+    /* SSE registers.
+            struct { uint64_t high; uint64_t low; } xmm[8];     // 8 registers of 128-bit each
+            uint32_t mxcsr;                                     // 32-bit
+            */
+    //  } no_sse; // end struct no_sse
+    /* If all of FPU, MMX and SSE registers are enabled, the fxsave area is used to store the context.
+            uint8_t fxsave[512];
+            */
+    // }; // end union fpu_mmx_sse
+
+    /* Segment registers.
+    uint16_t cs;
+    uint16_t ds;
+    uint16_t es;
+    uint16_t fs;
+    uint16_t gs;
+    uint16_t ss;
+    */
+
+    /* Debug registers.
+    uint32_t dr0;
+    uint32_t dr1;
+    uint32_t dr2;
+    uint32_t dr3;
+    uint32_t dr6;
+    uint32_t dr7;
+    */
+
+    /* Control registers.
+    uint32_t cr0;
+    uint32_t cr2;
+    uint32_t cr3;
+    uint32_t cr4;
+    uint32_t cr8;
+    */
 };
 
 #pragma pack(pop)
 
-/**
- * @brief The size of the CPU context structure, aligned to the next power of 2.
- * 
- * @details This variable is initialized in cco_init().
- */
-CCO_PRIVATE uint32_t cco_x86_cpu_context_size;
+#define CCO_DEFAULT_ARCHITECTURE_SPECIFIC_SETTINGS() &cco_default_x86_settings_instance;
 
-#if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS && CCO_x86_USE_HAS_FXSR
-/**
- * @brief Whether the CPU supports fxsave. Initialized in cco_init() and cached, used in cco_cswitch().
- * 
- * @details Defined in context.S.
- */
-CCO_PRIVATE bool cco_x86_has_fxsr;
+CCO_PRIVATE cco_x86_settings cco_default_x86_settings_instance = 0
+#if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE && CCO_x86_EFLAGS_REGISTER_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER
+#endif
+#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_FPU_MMX_REGISTERS_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS
+#endif
+#if CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE && CCO_x86_SSE_REGISTERS_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS
+#endif
+#if CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE && CCO_x86_SEGMENT_REGISTERS_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS
+#endif
+#if CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE && CCO_x86_DEBUG_REGISTERS_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS
+#endif
+#if CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE && CCO_x86_CONTROL_REGISTERS_DEFAULT_EXCHANGE
+                                                                 | CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS
+#endif
+    ;
+
+CCO_PRIVATE always_inline size_t
+cco_get_cpu_context_size(const cco_architecture_specific_settings* settings)
+{
+    // clang-format off
+    return sizeof(struct cco_cpu_context)
+#if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
+    + ((*settings & CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER) ? sizeof(uint32_t) : 0)
+#endif
+#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+    + ( // first branch is for FPU/MMX and SSE combined (fxsr), second for FPU/MMX only, and third for SSE only
+    ((*settings & (CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS | CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS)) ? sizeof(uint8_t[512]) :
+    ((*settings & CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS) ? sizeof(uint8_t[(16+16+16+48+48+16+8*80)/8]) :
+    ((*settings & CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS) ? sizeof(uint8_t[(32+8*128)/8]) : 0
+    ))))
+#elif CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE
+    + ((*settings & CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS) ? sizeof(uint8_t[(16+16+16+48+48+16+8*80)/8]) : 0)
+#elif CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+    + ((*settings & CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS) ? sizeof(uint8_t[(32+8*128)/8]) : 0)
+#endif
+#if CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE
+    + (*setting & CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS) ? sizeof(uint16_t[6]) : 0
+#endif
+#if CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE
+    + (*setting & CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS) ? sizeof(uint32_t[6]) : 0
+#endif
+#if CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+    + (*setting & CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS) ? sizeof(uint32_t[5]) : 0
+#endif
+    ;
+    // clang-format on
+}
+
+#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+
+/** @brief Whether the CPU supports fxsave. Initialized in cco_init() and cached. */
+CCO_PRIVATE volatile bool cco_x86_has_fxsr;
 
 /**
  * @brief Whether the CPU supports fxsave. Initialized in cco_init() and cached.
@@ -106,10 +202,10 @@ CCO_PRIVATE bool cco_x86_has_fxsr;
  * @note This function creates 4 local variables, so it should be called only once at startup.
  * Specialized assembly is used in cco_cswitch() to avoid the overhead of this function.
  * 
- * @return always_inline 
+ * @return bool whether the CPU supports fxsave or not 
  */
 CCO_PRIVATE always_inline bool
-cco_x86_supports_fxsr()
+cco_x86_retrieve_has_fxsr()
 {
     uint32_t eax, ebx, ecx, edx;
     cco_cpuid(1, eax, ebx, ecx, edx);
@@ -171,134 +267,179 @@ cco_prepare_coroutine(cco_coroutine* coroutine)
  * @param prev the current CPU context to store (and suspend)
  * @param next the CPU context to load (and resume)
  */
-CCO_PRIVATE no_inline void fastcall naked
-cco_cswitch(cco_cpu_context* restrict prev, cco_cpu_context* restrict next)
+CCO_PRIVATE no_inline fastcall naked void
+cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
 {
     // We mark the arguments as unused to avoid warnings, but we actually use them in the assembly code.
+    // ecx contains the address of prev, edx contains the address of next.
     (void)prev;
     (void)next;
-    // I used inline assembly at first using prev/next and their fields but
-    // 1. I obtained suboptimal code
-    // 2. The code could not work when using -O3
-    // So eventually I'm writing the assembly code by hand.
+
+    // In the first implementation of this function I was using prev/next to actually access their fields, but
+    // 1. I obtained suboptimal code (twice the number of instructions for each register stored)
+    // 2. The code could not work when using -O3 (most likely because the function was not naked, though).
+    // Eventually I wrote the function in C for if control statements, mixed with pure assembly code by hand.
 #if defined(__GNUC__) || defined(__clang__)
-    // ecx contains the address of prev, edx contains the address of next.
-    __asm__ volatile("movl %eax, (%ecx)");
-    __asm__ volatile("movl %ebx, 0x4(%ecx)");
-    __asm__ volatile("movl %esi, 0x8(%ecx)");
-    __asm__ volatile("movl %edi, 0xc(%ecx)");
-    __asm__ volatile("movl %ebp, 0x10(%ecx)");
-#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
-    __asm__ volatile("pushf");
-    __asm__ volatile("popl %0" : "=r"(prev->eflags));
+
+#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                       \
+      || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                      \
+      || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+    __asm__ volatile("pushl 4(%ecx)");
 #  endif
-#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_x86_USE_HAS_FXSR
-    if(cco_x86_has_fxsr) {
-        __asm__ volatile("fxsave %0" ::"m"(prev->fxsr) : "memory");
-        __asm__ volatile("fxrstor %0" ::"m"(next->fxsr) : "memory");
-    }
-#    else
-    __asm__ volatile(
-        "cpuid\n\t"
-        "test $(1<<24), %%ecx\n\t"
-        "jz .Lno_fxsr\n\t"
-        "fxsave %[prev]\n\t"
-        "fxrstor %[next]\n"
-        ".Lno_fxsr:\n\t"
-        : /* no output */
-        : [prev] "m"(prev->fxsr), [next] "m"(next->fxsr)
-        : "memory"
+    __asm__ volatile("movl (%ecx), %ecx");     /* %ecx = prev->context;*/
+    __asm__ volatile("movl %ebx, 0x00(%ecx)"); /* prev->context.ebx = %ebx; */
+#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                       \
+      || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                      \
+      || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+    __asm__ volatile("popl %ebx");
+#  endif
+    __asm__ volatile("movl %esi, 0x04(%ecx)");                /* prev->context.esi = %esi; */
+    __asm__ volatile("movl %edi, 0x08(%ecx)");                /* prev->context.edi = %edi; */
+    __asm__ volatile("movl %ebp, 0x0c(%ecx)");                /* prev->context.ebp = %ebp; */
+    __asm__ volatile("movl %esp, 0x10(%ecx)");                /* prev->context.esp = %esp; */
+    __asm__ volatile("popl %edi \n\t movl %edi, 0x14(%ecx)"); /* prev->context.eip = %eip; */
+    __asm__ volatile("addl $28, %ecx");                       /* %ecx = (&prev->context.eip + 1); */
+
+#  define ASMSTR(X)  ASMSTR2(X)
+#  define ASMSTR2(X) #X
+
+#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
+#    define EXCHANGE_EFLAGS_REGISTER (1 << 0)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER == EXCHANGE_EFLAGS_REGISTER,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER differs from the value of EXCHANGE_EFLAGS_REGISTER"
     );
-#    endif
+    __asm__ volatile("test $" ASMSTR(EXCHANGE_EFLAGS_REGISTER) ", %ebx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
+    __asm__ volatile("jz .Lno_exchange_flags_registers");                 /* then */
+    __asm__ volatile("pushf");                                            /* push %eflags; */
+    __asm__ volatile("popl %esi");                                        /* %ebx = %eflags; */
+    __asm__ volatile("movl %esi, 0x00(%ecx)");                            /* prev->context.eflags = %eflags; */
+    __asm__ volatile("addl $4, %ecx");                                    /* %ecx = (&prev->context.eflags + 1); */
+    __asm__ volatile(".Lno_exchange_flags_registers:");                   /* else */
 #  endif
-    __asm__ volatile("movl %esp, 0x14(%ecx)");
-    __asm__ volatile("popl %ebx \n\t movl %ebx, 0x18(%ecx)");
-    __asm__ volatile("movl 0x14(%edx), %esp");
-    __asm__ volatile("movl 0x18(%edx), %ebx \n\t movl %ebx, 0x0(%esp)");
-    __asm__ volatile("movl 0x10(%edx), %ebp");
-    __asm__ volatile("movl 0x0c(%edx), %edi");
-    __asm__ volatile("movl 0x08(%edx), %esi");
-    __asm__ volatile("movl 0x04(%edx), %ebx");
-    __asm__ volatile("movl 0x00(%edx), %eax");
+
+#  if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+#    define EXCHANGE_FPU_MMX_REGISTERS (1 << 1)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS == EXCHANGE_FPU_MMX_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS differs from the value of EXCHANGE_FPU_MMX_REGISTERS"
+    );
+#    define EXCHANGE_SSE_REGISTERS (1 << 2)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS == EXCHANGE_SSE_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS differs from the value of EXCHANGE_SSE_REGISTERS"
+    );
+    __asm__ volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "|" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ebx");
+    __asm__ volatile("jz .Lno_exchange_fpu_mmx_sse_registers");
+    if(cco_x86_has_fxsr) {
+        __asm__ volatile("fxsave (%ecx)");
+        __asm__ volatile("addl $512, %ecx");
+    }
+    else {
+        // TODO: store FPU/MMX and SSE registers one by one
+    }
+    __asm__ volatile(".Lno_exchange_fpu_mmx_sse_registers:");
+#  elif CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE
+#    define EXCHANGE_FPU_MMX_REGISTERS (1 << 1)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS == EXCHANGE_FPU_MMX_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS differs from the value of EXCHANGE_FPU_MMX_REGISTERS"
+    );
+    __asm__ volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "), %ebx");
+    __asm__ volatile("jz .Lno_exchange_fpu_mmx_registers");
+    // TODO: store FPU/MMX registers one by one
+    __asm__ volatile(".Lno_exchange_fpu_mmx_registers:");
+#  elif CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+#    define EXCHANGE_SSE_REGISTERS (1 << 2)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS == EXCHANGE_SSE_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS differs from the value of EXCHANGE_SSE_REGISTERS"
+    );
+    __asm__ volatile("test %(" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ebx");
+    __asm__ volatile("jz .Lno_exchange_sse_registers");
+    // TODO: store SSE registers one by one
+    // __asm__ volatile("addl $128, %ecx");
+    __asm__ volatile(".Lno_exchange_sse_registers:");
+#  endif
+
+#  if CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE
+#    define EXCHANGE_SEGMENT_REGISTERS (1 << 3)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS == EXCHANGE_SEGMENT_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS differs from the value of EXCHANGE_SEGMENT_REGISTERS"
+    );
+    /* if(settings & CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS) { */
+    __asm__ volatile("test $" ASMSTR(EXCHANGE_SEGMENT_REGISTERS) ", %ebx");
+    __asm__ volatile("jz .Lno_exchange_segment_registers");
+    __asm__ volatile("movw %cs, 0x00(%ecx)"); /* prev->context.cs = %cs; */
+    __asm__ volatile("movw %ds, 0x02(%ecx)"); /* prev->context.ds = %ds; */
+    __asm__ volatile("movw %ss, 0x04(%ecx)"); /* prev->context.ss = %ss; */
+    __asm__ volatile("movw %es, 0x06(%ecx)"); /* prev->context.es = %es; */
+    __asm__ volatile("movw %fs, 0x08(%ecx)"); /* prev->context.fs = %fs; */
+    __asm__ volatile("movw %gs, 0x0a(%ecx)"); /* prev->context.gs = %gs; */
+    __asm__ volatile("addl $12, %ecx");       /* %ecx = (&prev->context.gs + 1); */
+    __asm__ volatile(".Lno_exchange_segment_registers:");
+#  endif
+
+#  if CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE
+#    define EXCHANGE_DEBUG_REGISTERS (1 << 4)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS == EXCHANGE_DEBUG_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS differs from the value of EXCHANGE_DEBUG_REGISTERS"
+    );
+    __asm__ volatile("test $" ASMSTR(EXCHANGE_DEBUG_REGISTERS) ", %ebx");
+    __asm__ volatile("jz .Lno_exchange_debug_registers");
+    __asm__ volatile("movl %dr0, 0x00(%ecx)"); /* prev->context.dr0 = %dr0; */
+    __asm__ volatile("movl %dr1, 0x04(%ecx)"); /* prev->context.dr1 = %dr1; */
+    __asm__ volatile("movl %dr2, 0x08(%ecx)"); /* prev->context.dr2 = %dr2; */
+    __asm__ volatile("movl %dr3, 0x0c(%ecx)"); /* prev->context.dr3 = %dr3; */
+    __asm__ volatile("movl %dr6, 0x10(%ecx)"); /* prev->context.dr6 = %dr6; */
+    __asm__ volatile("movl %dr7, 0x14(%ecx)"); /* prev->context.dr7 = %dr7; */
+    __asm__ volatile("addl $24, %ecx");        /* %ecx = (&prev->context.dr7 + 1); */
+    __asm__ volatile(".Lno_exchange_debug_registers:");
+#  endif
+
+#  if CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+#    define EXCHANGE_CONTROL_REGISTERS (1 << 5)
+    _Static_assert(
+        CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS == EXCHANGE_CONTROL_REGISTERS,
+        "The value of CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS differs from the value of EXCHANGE_CONTROL_REGISTERS"
+    );
+    __asm__ volatile("test $" ASMSTR(EXCHANGE_CONTROL_REGISTERS) ", %ebx");
+    __asm__ volatile("jz .Lno_exchange_control_registers");
+    __asm__ volatile("movl %cr0, 0x00(%ecx)"); /* prev->context.cr0 = %cr0; */
+    __asm__ volatile("movl %cr2, 0x04(%ecx)"); /* prev->context.cr2 = %cr2; */
+    __asm__ volatile("movl %cr3, 0x08(%ecx)"); /* prev->context.cr3 = %cr3; */
+    __asm__ volatile("movl %cr4, 0x0c(%ecx)"); /* prev->context.cr4 = %cr4; */
+    __asm__ volatile("movl %cr8, 0x10(%ecx)"); /* prev->context.cr8 = %cr8; */
+    __asm__ volatile(".Lno_exchange_control_registers:");
+#  endif
+#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                       \
+      || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                      \
+      || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+    __asm__ volatile("movl 4(%edx), %ebx");
+#  endif
+    __asm__ volatile("movl (%edx), %edx");
+    __asm__ volatile("movl 0x10(%edx), %esp");
+    __asm__ volatile("movl 0x14(%edx), %edi \n\t movl %edi, 0x0(%esp)");
+    __asm__ volatile("movl 0x0c(%edx), %ebp");
+    __asm__ volatile("movl 0x08(%edx), %edi");
+    __asm__ volatile("movl 0x04(%edx), %esi");
+    __asm__ volatile("movl 0x00(%edx), %ebx");
     __asm__ volatile("ret");
 #elif defined(_MSC_VER)
-#  if CCO_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
-    // code for eax, ebx, esi, edi, ebp
-#  endif
-#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
-    // code for eflags
-#  endif
-#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_x86_USE_HAS_FXSR
-    // code using cco_x86_has_fxsr
-#    else
-    // code using x86_supports_fxsr()
-#    endif
-#  endif
-    // code for esp/eip
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
-#  if CCO_x86_EXCHANGE_GENERAL_PURPOSE_REGISTERS
-    // code for eax, ebx, esi, edi, ebp
-#  endif
-#  if CCO_x86_EXCHANGE_FLAGS_REGISTER
-    // code for eflags
-#  endif
-#  if CCO_x86_EXCHANGE_FPU_AND_MMX_REGISTERS
-#    if CCO_x86_USE_HAS_FXSR
-    // code using cco_x86_has_fxsr
-#    else
-    // code using x86_supports_fxsr()
-#    endif
-#  endif
-    // code for esp/eip
 #else
 #  error Unsupported compiler
 #endif
 }
 
-/**
- * @brief This function calculates the next power of 2 of a given number.
- * 
- * @param s the number to calculate the next power of 2
- * @return size_t the next power of 2
- */
-CCO_PRIVATE always_inline size_t
-cco_next_power_of_2(size_t s)
-{
-    size_t p = 1;
-    while(p < s) {
-        p <<= 1;
-    }
-    return p;
-}
-
-/**
- * @brief This function calculates the size of the CPU context structure, aligned to the next power of 2.
- * 
- * @return size_t the size of the CPU context structure
- */
-CCO_PRIVATE always_inline uint32_t
-cco_calculate_x86_cpu_context_size()
-{
-#if CCO_x86_STORE_FPU_AND_MMX_REGISTERS
-#  if CCO_x86_USE_HAS_FXSR
-    return cco_next_power_of_2(sizeof(cco_cpu_context) - (cco_x86_has_fxsr ? 0 : sizeof(((cco_cpu_context*)(NULL))->fxsr)));
-#  else
-    return cco_next_power_of_2(sizeof(cco_cpu_context) - (x86_supports_fxsr() ? 0 : sizeof(((cco_cpu_context*)(NULL))->fxsr)));
-#  endif
-#else
-    return cco_next_power_of_2(sizeof(cco_cpu_context));
-#endif
-}
-
+#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
 CCO_PRIVATE void ctor
 cco_cpu_context_init()
 {
-#if CCO_x86_STORE_FPU_AND_MMX_REGISTERS && CCO_x86_USE_HAS_FXSR
-    cco_x86_has_fxsr = cco_x86_supports_fxsr();
-#endif
-    cco_x86_cpu_context_size = cco_calculate_x86_cpu_context_size();
+    cco_x86_has_fxsr = cco_x86_retrieve_has_fxsr();
 }
+#endif
 
 #endif

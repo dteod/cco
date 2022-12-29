@@ -44,9 +44,11 @@ typedef enum {
 } cco_error;
 
 /** Error code pointer of the current thread */
-extern const cco_error* cco_errno_ptr();
+CCO_API const cco_error* cco_errno_ptr();
 
 /** Error code of the current thread */
 #define cco_errno (*cco_errno_ptr())
+
+CCO_API const char* cco_strerror(cco_error error);
 
 #endif
