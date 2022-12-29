@@ -23,7 +23,7 @@
 #  error "This file was designed to be included from coroutine.c directly"
 #endif
 
-/** Compiler-agnostic macro to define a cdecl calling convention. */
+/** Compiler-agnostic macro to define a fastcall calling convention. */
 #if defined(__GNUC__) || defined(__clang__)
 #  define fastcall __attribute__((fastcall))
 #elif defined(_MSC_VER)
@@ -53,9 +53,8 @@
 /**
  * @brief Basic x86 registers struct.
  * 
- * @details This structure contains the CPU state for the x86 architecture.
- * It contains the general purpose registers, the status flag and instruction pointer,
- * the FPU registers, the floating-point control registers, and the x87/MMX/XMM registers if available.
+ * @details This structure started as a struct to be used to store the context of a coroutine, but it was later
+ * 
  * 
  * @note XMM registers are included in the fxsave area, a runtime check for fxsave support is performed in cswitch.
  *
@@ -159,10 +158,21 @@ CCO_PRIVATE cco_x86_settings cco_default_x86_settings_instance = 0
 #endif
     ;
 
+#define CCO_x86_BARE_CSWITCH                                                                                                     \
+  (!(CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                        \
+     || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                       \
+     || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE))
+
+#define CCO_x86_ELIGIBLE_FOR_FXSR (CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE)
+
 CCO_PRIVATE always_inline size_t
 cco_get_cpu_context_size(const cco_architecture_specific_settings* settings)
 {
     // clang-format off
+#if CCO_x86_BARE_CSWITCH
+    // It was not needed to wrap this in a conditional block, but is not a problem either.
+    (void) settings;
+#endif
     return sizeof(struct cco_cpu_context)
 #if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
     + ((*settings & CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER) ? sizeof(uint32_t) : 0)
@@ -191,7 +201,7 @@ cco_get_cpu_context_size(const cco_architecture_specific_settings* settings)
     // clang-format on
 }
 
-#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+#if CCO_x86_ELIGIBLE_FOR_FXSR
 
 /** @brief Whether the CPU supports fxsave. Initialized in cco_init() and cached. */
 CCO_PRIVATE volatile bool cco_x86_has_fxsr;
@@ -281,16 +291,12 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
     // Eventually I wrote the function in C for if control statements, mixed with pure assembly code by hand.
 #if defined(__GNUC__) || defined(__clang__)
 
-#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                       \
-      || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                      \
-      || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+#  if !CCO_x86_BARE_CSWITCH
     __asm__ volatile("pushl 4(%ecx)");
 #  endif
     __asm__ volatile("movl (%ecx), %ecx");     /* %ecx = prev->context;*/
     __asm__ volatile("movl %ebx, 0x00(%ecx)"); /* prev->context.ebx = %ebx; */
-#  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE || CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE                                       \
-      || CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE || CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE                                      \
-      || CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE || CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
+#  if !CCO_x86_BARE_CSWITCH
     __asm__ volatile("popl %ebx");
 #  endif
     __asm__ volatile("movl %esi, 0x04(%ecx)");                /* prev->context.esi = %esi; */
@@ -298,10 +304,11 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
     __asm__ volatile("movl %ebp, 0x0c(%ecx)");                /* prev->context.ebp = %ebp; */
     __asm__ volatile("movl %esp, 0x10(%ecx)");                /* prev->context.esp = %esp; */
     __asm__ volatile("popl %edi \n\t movl %edi, 0x14(%ecx)"); /* prev->context.eip = %eip; */
-    __asm__ volatile("addl $28, %ecx");                       /* %ecx = (&prev->context.eip + 1); */
-
-#  define ASMSTR(X)  ASMSTR2(X)
-#  define ASMSTR2(X) #X
+#  if !CCO_x86_BARE_CSWITCH
+    __asm__ volatile("addl $28, %ecx"); /* %ecx = (&prev->context.eip + 1); */
+#    define ASMSTR(X)  ASMSTR2(X)
+#    define ASMSTR2(X) #X
+#  endif
 
 #  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
 #    define EXCHANGE_EFLAGS_REGISTER (1 << 0)
@@ -318,7 +325,7 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
     __asm__ volatile(".Lno_exchange_flags_registers:");                   /* else */
 #  endif
 
-#  if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+#  if CCO_x86_ELIGIBLE_FOR_FXSR
 #    define EXCHANGE_FPU_MMX_REGISTERS (1 << 1)
     _Static_assert(
         CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS == EXCHANGE_FPU_MMX_REGISTERS,
