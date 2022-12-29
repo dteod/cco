@@ -151,6 +151,11 @@ cco_init()
 CCO_API_INTERNAL cco_coroutine*
 cco_coroutine_create(size_t stack_size, const cco_architecture_specific_settings* settings)
 {
+    if(stack_size == 0) {
+        *cco_errno_location() = CCO_ERROR_INVALID_ARGUMENT;
+        return NULL;
+    }
+
     cco_coroutine* out = (cco_coroutine*)cco_alloc(sizeof(cco_coroutine));
     if(out) {
         out->stack_size = stack_size;

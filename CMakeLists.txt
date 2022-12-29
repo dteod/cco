@@ -78,7 +78,7 @@ else()
     endif()
 endif()
 
-project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C)
+project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C CXX)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CodeCov.cmake)
 
@@ -166,10 +166,14 @@ function(add_cco_library LIBTYPE)
     endif()
     target_compile_definitions(
         ${LIBNAME} PRIVATE
-        CCO_INTERNAL=1
-        CCO_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-        CCO_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-        CCO_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+        -DCCO_INTERNAL=1
+        -DCCO_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        -DCCO_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        -DCCO_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    )
+    target_compile_definitions(
+        ${LIBNAME} PUBLIC
+        -DCCO_TARGET_ARCH=CCO_ARCH_${CMAKE_SYSTEM_PROCESSOR}
     )
     get_property(CCO_COMPILE_DEFINITIONS GLOBAL PROPERTY cco_COMPILE_SETTINGS)
     foreach(DEF ${CCO_COMPILE_DEFINITIONS})
@@ -183,7 +187,7 @@ function(add_cco_library LIBTYPE)
     endif()
 
     target_hard_compilation(${LIBNAME} PRIVATE)
-    target_link_libraries(${LIBNAME} PRIVATE cco_arch_${CMAKE_SYSTEM_PROCESSOR})
+    target_link_libraries(${LIBNAME} PUBLIC cco_arch_${CMAKE_SYSTEM_PROCESSOR})
 endfunction()
 
 add_cco_library(STATIC)
@@ -192,13 +196,24 @@ if(TARGET_SUPPORTS_SHARED_LIBS)
 endif()
 
 function(create_cco_test TESTNAME)
-    add_executable(cco_arch_test ${CMAKE_CURRENT_SOURCE_DIR}/test/${TESTNAME}.c)
-    target_link_libraries(cco_arch_test PRIVATE cco_static cco_arch_${CMAKE_SYSTEM_PROCESSOR})
-    target_include_directories(cco_arch_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/test)
-    # target_hard_compilation(cco_arch_test PRIVATE)
-    add_test(NAME cco_arch_test COMMAND cco_arch_test)
+    get_filename_component(TEST_BASE_NAME "${TESTNAME}" NAME_WE)
+    get_filename_component(TEST_EXTENSION "${TESTNAME}" EXT)
+    add_executable(cco_${TEST_BASE_NAME}_test ${CMAKE_CURRENT_SOURCE_DIR}/test/${TESTNAME})
+    target_link_libraries(cco_${TEST_BASE_NAME}_test PRIVATE cco_static)
+    target_include_directories(cco_${TEST_BASE_NAME}_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    if(TEST_BASE_NAME STREQUAL ${CMAKE_SYSTEM_PROCESSOR} AND TEST_EXTENSION STREQUAL ".c")
+        target_link_libraries(cco_${TEST_BASE_NAME}_test PRIVATE cco_arch_${CMAKE_SYSTEM_PROCESSOR})
+        target_include_directories(cco_${TEST_BASE_NAME}_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    endif()
+    if(TEST_EXTENSION STREQUAL ".cpp")
+        target_compile_features(cco_${TEST_BASE_NAME}_test PRIVATE cxx_std_20)
+    endif()
+    target_hard_compilation(cco_${TEST_BASE_NAME}_test PRIVATE)
+    add_test(NAME cco_${TEST_BASE_NAME}_test COMMAND cco_${TEST_BASE_NAME}_test)
 endfunction()
 
-create_cco_test(${CMAKE_SYSTEM_PROCESSOR})
+create_cco_test(example.c)
+create_cco_test(black_box.cpp)
+create_cco_test(${CMAKE_SYSTEM_PROCESSOR}.c)
 
 include(CTest)

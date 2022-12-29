@@ -33,9 +33,9 @@
 
 #include "compiler.h"
 
-#if CCO_TARGET_ARCH == CCO_ARCH_X86
+#if CCO_TARGET_ARCH == CCO_ARCH_x86
 #  include "arch/x86.h"
-#elif CCO_TARGET_ARCH == CCO_ARCH_X86_64
+#elif CCO_TARGET_ARCH == CCO_ARCH_x86_64
 #  include "arch/x86_64.h"
 #elif CCO_TARGET_ARCH == CCO_ARCH_ARM
 #  include "arch/arm.h"

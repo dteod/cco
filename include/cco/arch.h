@@ -32,8 +32,8 @@
 #endif
 
 /** Compiler-agnostic architecture definition */
-#define CCO_ARCH_X86     1  /**< x86 architecture */
-#define CCO_ARCH_X86_64  2  /**< x86_64 architecture */
+#define CCO_ARCH_x86     1  /**< x86 architecture */
+#define CCO_ARCH_x86_64  2  /**< x86_64 architecture */
 #define CCO_ARCH_IA64    3  /**< Itanium architecture */
 #define CCO_ARCH_ARM     4  /**< ARM architecture */
 #define CCO_ARCH_ARM64   5  /**< ARM64 architecture */
@@ -97,10 +97,10 @@
 #  endif
 #endif
 
-#if CCO_TARGET_ARCH == CCO_ARCH_X86
+#if CCO_TARGET_ARCH == CCO_ARCH_x86
 #  define CCO_TARGET_ARCH_STRING "x86"
 #  define CCO_TARGET_ARCH_HEADER "cco/arch/x86.h"
-#elif CCO_TARGET_ARCH == CCO_ARCH_X86_64
+#elif CCO_TARGET_ARCH == CCO_ARCH_x86_64
 #  define CCO_TARGET_ARCH_STRING "x86_64"
 #  define CCO_TARGET_ARCH_HEADER "cco/arch/x86_64.h"
 #elif CCO_TARGET_ARCH == CCO_ARCH_IA64

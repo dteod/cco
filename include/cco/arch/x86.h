@@ -16,8 +16,8 @@
  *   along with cco.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef CCO_ARCH_X86_H
-#define CCO_ARCH_X86_H
+#ifndef CCO_ARCH_x86_H_INCLUDED
+#define CCO_ARCH_x86_H_INCLUDED
 
 /**
  * @brief Settings for 32-bit x86 architectures.
