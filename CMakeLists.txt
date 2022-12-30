@@ -80,10 +80,14 @@ endif()
 
 project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C CXX)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CodeCov.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/builds/Coverage.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/builds/Profile.cmake)
 
+message(STATUS "C Compiler: ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
+message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Target platform: ${CMAKE_SYSTEM_PROCESSOR}-${CMAKE_SYSTEM_NAME}")
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel CodeCov." FORCE)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel Coverage Profile." FORCE)
     message(STATUS "Build type not defined, using default: ${CMAKE_BUILD_TYPE}")
 else()
     message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
