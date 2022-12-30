@@ -17,13 +17,11 @@
 # Set a default value for a variable if it is not already set and appends it to a target-specific list of compile options
 function(default_compile_setting TARGET DEFINITION DEFAULT_VALUE)
     set(${DEFINITION}_DEFAULT ${DEFAULT_VALUE})
-
     if(NOT DEFINED ${DEFINITION})
         if(${CMAKE_VERBOSE_SETTINGS})
             message(STATUS "${DEFINITION} set to default value of ${${DEFINITION}_DEFAULT}")
         endif()
         set(${DEFINITION} ${${DEFINITION}_DEFAULT})
-        set(${DEFINITION} ${${DEFINITION}_DEFAULT} PARENT_SCOPE)
     else()
         if(${CMAKE_VERBOSE_SETTINGS})
             message(STATUS "${DEFINITION} set to ${${DEFINITION}}")
