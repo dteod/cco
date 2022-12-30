@@ -68,23 +68,10 @@ struct cco_coroutine {
 // CCO_PRIVATE always_inline size_t cco_get_cpu_context_size(const cco_architecture_specific_settings* arch_specific_settings);
 // CCO_PRIVATE always_inline void cco_prepare_coroutine(cco_coroutine* coroutine);
 // CCO_PRIVATE no_inline fastcall naked void cco_cswitch(cco_cpu_context* prev, cco_cpu_context* next);
+// CCO_PRIVATE cco_cpu_context* cco_main_context;
 
 #define CCO_COROUTINE_IMPLEMENTATION
 #include "arch.h"
-
-/**
- * @brief Thread-local context of the main coroutine.
- * 
- * @details The "main coroutine" concept is not exposed to the user: it is just named as "main context"
- * in the documentation. The main context is the context of the main thread, and it is used to run the
- * main function of the program. It is not a coroutine, but it is used to run the first
- * coroutine created by the user, to store the context of the main function and to keep track of where
- * the coroutine shall yield control to when it terminates, either with cco_yield() or cco_return().
- * 
- * @note Each thread in a program may start and/or resume a coroutine, and each of these contexts
- * shall be saved. This is why the main context is thread-local.
- */
-CCO_PRIVATE thread_local cco_cpu_context cco_main_context;
 
 /**
  * @brief Thread-local storage for the main coroutine.
@@ -143,7 +130,7 @@ cco_init()
     for(int i = 0; i != sizeof(cco_architecture_specific_settings); ++i) {
         ((uint8_t*)&cco_main_coroutine.settings)[i] = ((uint8_t*)settings)[i];
     }
-    cco_main_coroutine.context = &cco_main_context;
+    cco_main_coroutine.context = (cco_cpu_context*)cco_main_context;
     cco_main_coroutine.state   = CCO_COROUTINE_STATE_RUNNING;
     cco_current_coroutine      = &cco_main_coroutine;
 }
@@ -169,10 +156,10 @@ cco_coroutine_create(size_t stack_size, const cco_architecture_specific_settings
             if(!settings) {
                 settings = CCO_DEFAULT_ARCHITECTURE_SPECIFIC_SETTINGS();
             }
-            out->context = (cco_cpu_context*)cco_alloc(cco_get_cpu_context_size(settings));
             for(size_t i = 0; i < sizeof(cco_architecture_specific_settings); ++i) {
                 ((uint8_t*)&out->settings)[i] = ((uint8_t*)settings)[i];
             }
+            out->context = (cco_cpu_context*)cco_aligned_alloc(cco_get_cpu_context_size(settings), 32);
             if(!out->context) {
                 cco_free(out->stack);
                 cco_free(out);
@@ -208,8 +195,8 @@ cco_coroutine_destroy(cco_coroutine* coroutine)
                 *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
                 return;
             }
+            cco_aligned_free(coroutine->context);
             cco_free(coroutine->stack);
-            cco_free(coroutine->context);
             cco_free(coroutine);
             *cco_errno_location() = CCO_OK;
         }

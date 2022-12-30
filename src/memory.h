@@ -23,7 +23,12 @@
 #include "compiler.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+#  include <malloc.h>
+#endif
 
 always_inline CCO_PRIVATE void*
 cco_alloc(size_t size)
@@ -32,10 +37,44 @@ cco_alloc(size_t size)
     // TODO use a custom allocator for static sizes
 }
 
+always_inline CCO_PRIVATE void*
+cco_aligned_alloc(size_t size, size_t alignment)
+{
+#if defined(_WIN32) || defined(_WIN64)
+    return _aligned_malloc(size, alignment);
+#elif __unix__
+    void* ptr;
+    if(posix_memalign(&ptr, alignment, size) != 0) {
+        ptr = NULL;
+    }
+    for(size_t i = 0; i != size; ++i) {
+        ((char*)ptr)[i] = 0;
+    }
+    // printf("allocated %p with alignment %zu and size %zu (posix_memalign)\n", ptr, alignment, size);
+    return ptr;
+    // TODO use a custom allocator for static sizes
+#else
+#  error "Unsupported platform (aligned malloc required)"
+#endif
+}
+
 always_inline CCO_PRIVATE void
 cco_free(void* ptr)
 {
     free(ptr);
+    // TODO use a custom allocator for static sizes
+}
+
+always_inline CCO_PRIVATE void
+cco_aligned_free(void* ptr)
+{
+#if defined(_WIN32) || defined(_WIN64)
+    _aligned_free(ptr);
+#elif __unix__
+    free(ptr);
+#else
+#  error "Unsupported platform (aligned free required)"
+#endif
     // TODO use a custom allocator for static sizes
 }
 
