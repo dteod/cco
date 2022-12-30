@@ -1,34 +1,34 @@
 [
   {
-    "name": "x86-Linux-gcc",
+    "name": "cco CMake toolkit: x86-Linux-gcc",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Linux-gcc.cmake"
   },
   {
-    "name": "x86-Linux-clang",
+    "name": "cco CMake toolkit: x86-Linux-clang",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Linux-clang.cmake"
   },
   {
-    "name": "x86-Windows-MinGW",
+    "name": "cco CMake toolkit: x86-Windows-MinGW",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Windows-MinGW.cmake"
   },
   {
-    "name": "x86-Windows-clang",
+    "name": "cco CMake toolkit: x86-Windows-clang",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Windows-clang.cmake"
   },
   {
-    "name": "x86-Windows-clang-cl",
+    "name": "cco CMake toolkit: x86-Windows-clang-cl",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Windows-clang-cl.cmake"
   },
   {
-    "name": "x86-Windows-MSVC",
+    "name": "cco CMake toolkit: x86-Windows-MSVC",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86-Windows-MSVC.cmake"
   },
   {
-    "name": "x86_64-Linux-gcc",
+    "name": "cco CMake toolkit: x86_64-Linux-gcc",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86_64-Linux-gcc.cmake"
   },
   {
-    "name": "x86_64-Linux-clang",
+    "name": "cco CMake toolkit: x86_64-Linux-clang",
     "toolchainFile": "${workspaceFolder}/cmake/toolchains/x86_64-Linux-clang.cmake"
   }
 ]
