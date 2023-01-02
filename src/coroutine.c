@@ -55,7 +55,6 @@ struct cco_coroutine {
     cco_coroutine_callback             callback;
     void*                              arg;
     void*                              return_value;
-    cco_coroutine_promise              promise;
     cco_coroutine_state                state;
     size_t                             stack_size;
     uint8_t*                           stack;
@@ -69,6 +68,8 @@ struct cco_coroutine {
 // CCO_PRIVATE always_inline void cco_prepare_coroutine(cco_coroutine* coroutine);
 // CCO_PRIVATE no_inline fastcall naked void cco_cswitch(cco_cpu_context* prev, cco_cpu_context* next);
 // CCO_PRIVATE cco_cpu_context* cco_main_context;
+// CCO_PRIVATE uint8_t* cco_current_stack_pointer();
+// CCO_PRIVATE uint8_t* cco_get_stack_pointer(const cco_coroutine*);
 
 #define CCO_COROUTINE_IMPLEMENTATION
 #include "arch.h"
@@ -116,9 +117,9 @@ cco_await_false_callback(cco_coroutine* coroutine, void* argument)
     return false;
 }
 
-CCO_API_INTERNAL const cco_await_callback cco_await_suspend_always = cco_await_false_callback;
+CCO_API_INTERNAL const cco_await_callback cco_await_not_ready = cco_await_false_callback;
 
-CCO_API_INTERNAL const cco_await_callback cco_await_suspend_never = cco_await_true_callback;
+CCO_API_INTERNAL const cco_await_callback cco_await_ready = cco_await_true_callback;
 
 /**
  * @brief Constructor function of the library, called before main() and used to initialize the global variables.
@@ -188,8 +189,8 @@ cco_coroutine_destroy(cco_coroutine* coroutine)
             // cco_free(coroutine->stack);
             // TODO this will be a problem. We're pulling the rug out from under our feet:
             // to perform a context switch we are using the stack of the coroutine we're destroying.
-            // We need to find a way to switch to the main context without using the stack of the
-            // coroutine we're destroying. Maybe we can use the stack of the main coroutine?
+            // We need to find a way to switch to the calling context without using the stack of the
+            // coroutine we're destroying.
             // For now I will just add a check to not destroy the current coroutine.
             if(coroutine == cco_current_coroutine) {
                 *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
@@ -229,7 +230,7 @@ cco_coroutine_start(cco_coroutine* coroutine, cco_coroutine_callback callback, v
                 coroutine->callback         = callback;
                 coroutine->arg              = arg;
                 coroutine->caller           = cco_current_coroutine;
-                coroutine->await_ready      = cco_await_suspend_always;
+                coroutine->await_ready      = cco_await_not_ready;
                 coroutine->await_on_suspend = NULL;
                 cco_prepare_coroutine(coroutine);
                 cco_current_coroutine = coroutine;
@@ -298,6 +299,10 @@ CCO_API_INTERNAL void
 cco_resume(cco_coroutine* coroutine)
 {
     if(coroutine) {
+        if(coroutine == &cco_main_coroutine) {
+            *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
+            return;
+        }
         if(coroutine->state == CCO_COROUTINE_STATE_SUSPENDED) {
             *cco_errno_location() = CCO_OK;
             coroutine->caller     = cco_current_coroutine;
@@ -436,7 +441,36 @@ cco_coroutine_get_stack_size(const cco_coroutine* coroutine)
     }
 }
 
-CCO_API_INTERNAL size_t cco_coroutine_get_stack_usage(const cco_coroutine* coroutine);
+CCO_API_INTERNAL size_t
+cco_coroutine_get_stack_usage(const cco_coroutine* coroutine)
+{
+    if(coroutine) {
+        if(coroutine == cco_current_coroutine) {
+            *cco_errno_location() = CCO_OK;
+            return coroutine->stack + coroutine->stack_size - cco_current_stack_pointer();
+        }
+        else if(coroutine->state == CCO_COROUTINE_STATE_SUSPENDED) {
+            *cco_errno_location() = CCO_OK;
+            return coroutine->stack + coroutine->stack_size - cco_get_stack_pointer(coroutine);
+        }
+        else if(coroutine->state == CCO_COROUTINE_STATE_UNSCHEDULED) {
+            *cco_errno_location() = CCO_OK;
+            return 0;
+        }
+        else if(coroutine->state == CCO_COROUTINE_STATE_NONE) {
+            *cco_errno_location() = CCO_ERROR_INVALID_ARGUMENT;
+            return 0;
+        }
+        else {
+            *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
+            return 0;
+        }
+    }
+    else {
+        *cco_errno_location() = CCO_ERROR_INVALID_ARGUMENT;
+        return 0;
+    }
+}
 
 CCO_API_INTERNAL void*
 cco_coroutine_get_return_value(const cco_coroutine* coroutine)
@@ -455,23 +489,4 @@ cco_coroutine_get_return_value(const cco_coroutine* coroutine)
         *cco_errno_location() = CCO_ERROR_INVALID_ARGUMENT;
         return NULL;
     }
-}
-
-CCO_API_INTERNAL cco_coroutine_promise*
-cco_coroutine_get_promise(cco_coroutine* coroutine)
-{
-    cco_coroutine_promise* promise = NULL;
-    if(coroutine) {
-        if(coroutine != &cco_main_coroutine) {
-            *cco_errno_location() = CCO_OK;
-            promise               = &coroutine->promise;
-        }
-        else {
-            *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
-        }
-    }
-    else {
-        *cco_errno_location() = CCO_ERROR_INVALID_ARGUMENT;
-    }
-    return promise;
 }
