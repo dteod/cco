@@ -72,16 +72,6 @@
 typedef struct cco_coroutine cco_coroutine;
 
 /**
- * @brief Coroutine promise type alias.
- * 
- * @details This type alias is used to represent the coroutine's promise. The promise is a pointer to an object
- * that can be used to communicate with the coroutine. For example, it can be used to store a pointer to an atomic object
- * to synchronize from an external thread, or it can be used by a scheduler to tell which coroutine to resume next at the end
- * of the current one.
- */
-typedef void* cco_coroutine_promise;
-
-/**
  * @brief Coroutine callback type alias.
  * 
  * @details This type alias is used to represent the coroutine's function to call when started. When a coroutine is created, 
@@ -302,7 +292,7 @@ CCO_API void cco_register_awaitable(cco_await_callback ready, cco_await_callback
  *       the on_suspend callback shall be used to schedule the coroutine for execution, while the ready
  *       callback shall be used to check if the await operation can be executed synchronously.
  */
-CCO_API const cco_await_callback cco_await_suspend_always;
+CCO_API const cco_await_callback cco_await_not_ready;
 
 /**
  * @brief Awaitable `ready' callback that always execute the await operation synchronously.
@@ -311,7 +301,7 @@ CCO_API const cco_await_callback cco_await_suspend_always;
  *       the on_suspend callback shall be used to schedule the coroutine for execution, while the ready
  *       callback shall be used to check if the await operation can be executed synchronously.
  */
-CCO_API const cco_await_callback cco_await_suspend_never;
+CCO_API const cco_await_callback cco_await_ready;
 
 /**
  * @brief Awaits for the given awaitable operation to complete, either synchronously or asynchronously.
@@ -397,22 +387,5 @@ CCO_API size_t cco_coroutine_get_stack_usage(const cco_coroutine* coroutine);
  * @return void* The value returned by the coroutine.
  */
 CCO_API void* cco_coroutine_get_return_value(const cco_coroutine* coroutine);
-
-/**
- * @brief Returns the coroutine's promise.
- * 
- * @details This function returns the coroutine's promise. The promise is a pointer to an object
- * that can be used to communicate with the coroutine. It is usually used to pass a pointer to a future object
- * to the coroutine, so that it can set the future's value when it finishes its execution. It is set to NULL by default.
- * 
- * @note If called from the main execution context, it will always return NULL.
- * 
- * @param[in]  coroutine A pointer to the coroutine to get the promise from.
- * @return cco_coroutine_promise Pointer to the coroutine's promise.
- * @retval CCO_OK
- * @retval CCO_ERROR_INVALID_CONTEXT
- * @retval CCO_ERROR_INVALID_PARAMETER
- */
-CCO_API cco_coroutine_promise* cco_coroutine_get_promise(cco_coroutine* coroutine);
 
 #endif
