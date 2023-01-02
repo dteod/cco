@@ -1,5 +1,9 @@
 {
     "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.debugConfig": {
+        "MIMode": "gdb",
+        "miDebuggerPath": "/usr/bin/gdb"
+    },
     "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
     "cmake.generator": "Unix Makefiles",
     "cmake.defaultVariants": {
