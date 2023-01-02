@@ -582,12 +582,34 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
 #endif
 }
 
-#if CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE && CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
+#if CCO_x86_ELIGIBLE_FOR_FXSR
 CCO_PRIVATE void ctor
 cco_cpu_context_init()
 {
     cco_x86_has_fxsr = cco_x86_retrieve_has_fxsr();
 }
 #endif
+
+CCO_PRIVATE always_inline uint8_t*
+cco_current_stack_pointer()
+{
+#if defined(__GNUC__) || defined(__clang__)
+    uint8_t* sp;
+    asm volatile("mov %%esp, %0" : "=r"(sp));
+    return sp;
+#elif defined(_MSC_VER)
+    return (uint8_t*)_AddressOfReturnAddress();
+#elif defined(__ICC) || defined(__INTEL_COMPILER)
+    return (uint8_t*)__builtin_frame_address(0);
+#else
+#  error Unsupported compiler
+#endif
+}
+
+CCO_PRIVATE always_inline uint8_t*
+cco_get_stack_pointer(const cco_coroutine* coroutine)
+{
+    return (uint8_t*)coroutine->context->esp;
+}
 
 #endif
