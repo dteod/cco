@@ -14,10 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR x86_64)
-
 if(NOT CCO_TOOLCHAIN_INCLUDED)
     set(CCO_TOOLCHAIN_INCLUDED TRUE)
-    include(${CMAKE_CURRENT_LIST_DIR}/../DefaultSetting.cmake)
+    set(CMAKE_SYSTEM_NAME Linux)
+    set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+    if(NOT CCO_TOOLCHAIN_INCLUDED)
+        set(CCO_TOOLCHAIN_INCLUDED TRUE)
+        include(${CMAKE_CURRENT_LIST_DIR}/../DefaultSetting.cmake)
+    endif()
 endif()

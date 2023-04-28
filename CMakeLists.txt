@@ -14,7 +14,15 @@
 # You should have received a copy of the GNU General Public License
 # along with cco.  If not, see <https://www.gnu.org/licenses/>.
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.24)
+
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION" OUTPUT_VARIABLE CCO_VERSION)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_FULL" OUTPUT_VARIABLE CCO_VERSION_FULL)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_MAJOR" OUTPUT_VARIABLE CCO_VERSION_MAJOR)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_MINOR" OUTPUT_VARIABLE CCO_VERSION_MINOR)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_PATCH" OUTPUT_VARIABLE CCO_VERSION_PATCH)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_PRERELEASE" OUTPUT_VARIABLE CCO_VERSION_PRERELEASE)
+execute_process(COMMAND bash -c "source ${CMAKE_CURRENT_SOURCE_DIR}/scripts/version-parse.sh && echo -n $VERSION_METADATA" OUTPUT_VARIABLE CCO_VERSION_METADATA)
 
 if(DEFINED CMAKE_TOOLCHAIN_FILE)
     message(STATUS "Toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
@@ -100,7 +108,8 @@ else()
         unset(GCC_EXECUTABLE)
         unset(HOST_ARCH)
     else()
-        message(FATAL_ERROR "Unsupported host operating system: ${CMAKE_HOST_SYSTEM_NAME}")
+        message(WARNING "Unsupported host operating system '${CMAKE_HOST_SYSTEM_NAME}' while determining architecture, falling back to x86_64")
+        set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
     endif()
 
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchains/${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_HOST_SYSTEM_NAME}.cmake)
@@ -112,7 +121,10 @@ else()
     endif()
 endif()
 
-project(cco VERSION 0.1.0 DESCRIPTION "C library for coroutines" LANGUAGES C CXX)
+project(cco VERSION ${CCO_VERSION_MAJOR}.${CCO_VERSION_MINOR}.${CCO_VERSION_PATCH}
+    DESCRIPTION "C library for coroutines"
+    LANGUAGES C CXX
+)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/builds/Coverage.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/builds/Profile.cmake)
@@ -125,6 +137,22 @@ if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "Build type not defined, using default: ${CMAKE_BUILD_TYPE}")
 else()
     message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+endif()
+
+option(CMAKE_FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." TRUE)
+
+if(${CMAKE_FORCE_COLORED_OUTPUT})
+    if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
+        add_compile_options(-fdiagnostics-color=always)
+    elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options(-fcolor-diagnostics)
+    endif()
+
+    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+        add_compile_options(-fdiagnostics-color=always)
+    elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options(-fcolor-diagnostics)
+    endif()
 endif()
 
 get_property(TARGET_SUPPORTS_SHARED_LIBS GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
@@ -172,15 +200,26 @@ default_compile_setting(cco CATCH_CPP_EXCEPTIONS_UNCAUGHT_EXCEPTION 0)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/TargetHardCompilation.cmake)
 
+target_sources(cco_arch_${CMAKE_SYSTEM_PROCESSOR} INTERFACE
+    FILE_SET HEADERS
+    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/cco/arch/${CMAKE_SYSTEM_PROCESSOR}.h
+)
+set_target_properties(cco_arch_${CMAKE_SYSTEM_PROCESSOR} PROPERTIES EXPORT_NAME arch)
+get_property(CCO_${CMAKE_SYSTEM_PROCESSOR}_COMPILE_DEFINITIONS GLOBAL PROPERTY cco_${CMAKE_SYSTEM_PROCESSOR}_COMPILE_SETTINGS)
+foreach(DEF ${CCO_COMPILE_DEFINITIONS})
+    target_compile_definitions(${LIBNAME} PUBLIC -DCCO_${CMAKE_SYSTEM_PROCESSOR}_${DEF})
+endforeach()
+
 function(add_cco_library LIBTYPE)
-    string(TOLOWER ${LIBTYPE} LIBNAME)
-    string(PREPEND LIBNAME "cco_")
+    string(TOLOWER ${LIBTYPE} LIBVARIANT)
+    string(PREPEND LIBNAME "cco_${LIBVARIANT}")
     add_library(${LIBNAME} ${LIBTYPE}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/coroutine.c
         ${CMAKE_CURRENT_SOURCE_DIR}/src/version.c
         ${CMAKE_CURRENT_SOURCE_DIR}/src/errno.c
     )
-    add_library(cco::${LIBNAME} ALIAS ${LIBNAME})
+    add_library(cco::${LIBVARIANT} ALIAS ${LIBNAME})
     target_sources(${LIBNAME} PUBLIC FILE_SET HEADERS
         BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include/
         FILES
@@ -214,25 +253,45 @@ function(add_cco_library LIBTYPE)
         ${LIBNAME} PUBLIC
         -DCCO_TARGET_ARCH=CCO_ARCH_${CMAKE_SYSTEM_PROCESSOR}
     )
-    get_property(CCO_COMPILE_DEFINITIONS GLOBAL PROPERTY cco_COMPILE_SETTINGS)
+    get_property(CCO_COMPILE_DEFINITIONS GLOBAL PROPERTY cco_${CMAKE_SYSTEM_PROCESSOR}_COMPILE_SETTINGS)
     foreach(DEF ${CCO_COMPILE_DEFINITIONS})
-        target_compile_definitions(${LIBNAME} PRIVATE -DCCO_${DEF})
+        target_compile_definitions(${LIBNAME} PRIVATE -DCCO_${CMAKE_SYSTEM_PROCESSOR}_${DEF})
     endforeach()
-
-    set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco")
 
     if(WIN32 AND STATIC_VALUE)
         set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco-static")
+    else()
+        set_target_properties(${LIBNAME} PROPERTIES OUTPUT_NAME "cco")
     endif()
 
     target_hard_compilation(${LIBNAME} PRIVATE)
     target_link_libraries(${LIBNAME} PRIVATE cco_arch_${CMAKE_SYSTEM_PROCESSOR})
+
+    set_target_properties(${LIBNAME} PROPERTIES EXPORT_NAME ${LIBVARIANT})
+    install(TARGETS ${LIBNAME}
+        EXPORT cco-targets
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        INCLUDES DESTINATION include
+        PUBLIC_HEADER DESTINATION include/cco
+        FILE_SET HEADERS
+    )
 endfunction()
 
 add_cco_library(STATIC)
 if(TARGET_SUPPORTS_SHARED_LIBS)
     add_cco_library(SHARED)
 endif()
+install(TARGETS cco_arch_${CMAKE_SYSTEM_PROCESSOR}
+    EXPORT cco-targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+    PUBLIC_HEADER DESTINATION include/cco
+    FILE_SET HEADERS
+)
 
 add_custom_target(cco_tests)
 function(create_cco_test TESTNAME)
@@ -251,8 +310,33 @@ function(create_cco_test TESTNAME)
     add_test(NAME cco_${TEST_BASE_NAME}_test COMMAND cco_${TEST_BASE_NAME}_test)
 endfunction()
 
+include(CTest)
 create_cco_test(example.c)
 create_cco_test(black_box.cpp)
 create_cco_test(${CMAKE_SYSTEM_PROCESSOR}.c)
 
-include(CTest)
+set(CPACK_PACKAGE_NAME "cco-${CMAKE_SYSTEM_PROCESSOR}")
+include(CPack)
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cco-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/cco-config.cmake
+    INSTALL_DESTINATION share/cmake/cco
+    NO_SET_AND_CHECK_MACRO
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/cco-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+install(EXPORT cco-targets
+    FILE cco-targets.cmake
+    NAMESPACE cco::
+    DESTINATION share/cmake/cco
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/cco-config.cmake 
+    ${CMAKE_CURRENT_BINARY_DIR}/cco-config-version.cmake 
+    DESTINATION share/cmake/cco
+)

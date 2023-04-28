@@ -27,6 +27,6 @@ if(NOT CCO_TOOLCHAIN_INCLUDED)
     set(CMAKE_C_COMPILER clang)
     set(CMAKE_CXX_COMPILER clang++)
 
-    target_compile_options(cco_arch_${CMAKE_SYSTEM_PROCESSOR} INTERFACE -march=i686)
-    target_link_options(cco_arch_${CMAKE_SYSTEM_PROCESSOR} INTERFACE -march=i686)
+    target_compile_options(cco_arch_${CMAKE_SYSTEM_PROCESSOR} INTERFACE -m32)
+    target_link_options(cco_arch_${CMAKE_SYSTEM_PROCESSOR} INTERFACE -m32)
 endif()
