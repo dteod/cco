@@ -125,7 +125,7 @@ CCO_API_INTERNAL const cco_await_callback cco_await_ready = cco_await_true_callb
  * @brief Constructor function of the library, called before main() and used to initialize the global variables.
  */
 CCO_PRIVATE void ctor
-cco_init()
+cco_init(void)
 {
     const cco_architecture_specific_settings* settings = CCO_DEFAULT_ARCHITECTURE_SPECIFIC_SETTINGS();
     for(int i = 0; i != sizeof(cco_architecture_specific_settings); ++i) {
@@ -256,7 +256,7 @@ cco_coroutine_start(cco_coroutine* coroutine, cco_coroutine_callback callback, v
 }
 
 CCO_API_INTERNAL cco_coroutine*
-cco_this_coroutine()
+cco_this_coroutine(void)
 {
     *cco_errno_location() = CCO_OK;
     return cco_current_coroutine != &cco_main_coroutine ? cco_current_coroutine : NULL;
@@ -280,7 +280,7 @@ cco_return(void* value)
 }
 
 CCO_API_INTERNAL void
-cco_suspend()
+cco_suspend(void)
 {
     if(cco_current_coroutine == &cco_main_coroutine) {
         *cco_errno_location() = CCO_ERROR_INVALID_CONTEXT;
@@ -385,7 +385,7 @@ suspend:
     cco_cswitch(current, caller);
 }
 
-CCO_API_INTERNAL const char* const cco_coroutine_state_strings[] = {
+CCO_API_INTERNAL const char* const cco_coroutine_state_strings[4] = {
     [CCO_COROUTINE_STATE_NONE]        = "none",
     [CCO_COROUTINE_STATE_RUNNING]     = "running",
     [CCO_COROUTINE_STATE_SUSPENDED]   = "suspended",

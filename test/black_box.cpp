@@ -38,7 +38,7 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
-static constexpr unsigned int CCO_DEFAULT_STACK_SIZE = 1024 * 1024;
+static constexpr unsigned int CCO_DEFAULT_STACK_SIZE = 4096 * 4;
 
 TEST_CASE("Test 1: Create a valid coroutine", "[cco]")
 {

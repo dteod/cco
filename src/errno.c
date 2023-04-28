@@ -16,9 +16,8 @@
  *   along with cco.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "errno.h"
-
 #include "api.h"
+#include "errno.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,19 +27,19 @@ CCO_PRIVATE thread_local cco_error  cco_errno_instance = CCO_OK;
 CCO_PRIVATE thread_local cco_error* cco_errno_loc;
 
 void ctor
-cco_errno_init()
+cco_errno_init(void)
 {
     cco_errno_loc = &cco_errno_instance;
 }
 
 CCO_API_INTERNAL const cco_error*
-cco_errno_ptr()
+cco_errno_ptr(void)
 {
     return cco_errno_loc;
 }
 
 cco_error*
-cco_errno_location()
+cco_errno_location(void)
 {
     return cco_errno_loc;
 }

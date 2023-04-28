@@ -330,12 +330,10 @@ cco_prepare_coroutine(cco_coroutine* coroutine)
  * @param next the CPU context to load (and resume)
  */
 CCO_PRIVATE no_inline fastcall naked void
-cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
+cco_cswitch(unused cco_coroutine* restrict prev, unused cco_coroutine* restrict next)
 {
     // We mark the arguments as unused to avoid warnings, but we actually use them in the assembly code.
     // ecx contains the address of prev, edx contains the address of next.
-    (void)prev;
-    (void)next;
 
     // In the first implementation of this function I was using prev/next to actually access their fields, but
     // 1. I obtained suboptimal code (twice the number of instructions for each register stored)
@@ -344,22 +342,22 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
 #if defined(__GNUC__) || defined(__clang__)
 
 #  if !CCO_x86_BARE_CSWITCH
-    asm volatile("pushl 4(%ecx)");
+    __asm__ volatile("pushl 4(%ecx)");
 #  endif
-    asm volatile("movl (%ecx), %ecx");     /* %ecx = prev->context;*/
-    asm volatile("movl %ebx, 0x00(%ecx)"); /* prev->context.ebx = %ebx; */
+    __asm__ volatile("movl (%ecx), %ecx");     /* %ecx = prev->context;*/
+    __asm__ volatile("movl %ebx, 0x00(%ecx)"); /* prev->context.ebx = %ebx; */
 #  if !CCO_x86_BARE_CSWITCH
-    asm volatile("popl %ebx");
+    __asm__ volatile("popl %ebx");
 #  endif
-    asm volatile("movl %esi, 0x04(%ecx)");                /* prev->context.esi = %esi; */
-    asm volatile("movl %edi, 0x08(%ecx)");                /* prev->context.edi = %edi; */
-    asm volatile("movl %ebp, 0x0c(%ecx)");                /* prev->context.ebp = %ebp; */
-    asm volatile("movl %esp, 0x10(%ecx)");                /* prev->context.esp = %esp; */
-    asm volatile("popl %edi \n\t movl %edi, 0x14(%ecx)"); /* prev->context.eip = %eip; */
+    __asm__ volatile("movl %esi, 0x04(%ecx)");                /* prev->context.esi = %esi; */
+    __asm__ volatile("movl %edi, 0x08(%ecx)");                /* prev->context.edi = %edi; */
+    __asm__ volatile("movl %ebp, 0x0c(%ecx)");                /* prev->context.ebp = %ebp; */
+    __asm__ volatile("movl %esp, 0x10(%ecx)");                /* prev->context.esp = %esp; */
+    __asm__ volatile("popl %edi \n\t movl %edi, 0x14(%ecx)"); /* prev->context.eip = %eip; */
 #  if !CCO_x86_BARE_CSWITCH
-    asm volatile("addl $28, %ecx"); /* %ecx = (&prev->context.eip + 1); */
-#    define ASMSTR(X)  ASMSTR2(X)
-#    define ASMSTR2(X) #X
+    __asm__ volatile("addl $28, %ecx"); /* %ecx = (&prev->context.eip + 1); */
+#    define __asm__STR(X)  __asm__STR2(X)
+#    define __asm__STR2(X) #X
 #  endif
 
 #  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
@@ -368,13 +366,13 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
         CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER == EXCHANGE_EFLAGS_REGISTER,
         "The value of CCO_SETTINGS_x86_EXCHANGE_EFLAGS_REGISTER differs from the value of EXCHANGE_EFLAGS_REGISTER"
     );
-    asm volatile("test $" ASMSTR(EXCHANGE_EFLAGS_REGISTER) ", %ebx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
-    asm volatile("jz .Lno_store_flags_registers");                    /* then */
-    asm volatile("pushf");                                            /* push %eflags; */
-    asm volatile("popl %esi");                                        /* %ebx = %eflags; */
-    asm volatile("movl %esi, 0x00(%ecx)");                            /* prev->context.eflags = %eflags; */
-    asm volatile("addl $4, %ecx");                                    /* %ecx = (&prev->context.eflags + 1); */
-    asm volatile(".Lno_store_flags_registers:");                      /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_EFLAGS_REGISTER) ", %ebx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
+    __asm__ volatile("jz .Lno_store_flags_registers");                        /* then */
+    __asm__ volatile("pushf");                                                /* push %eflags; */
+    __asm__ volatile("popl %esi");                                            /* %ebx = %eflags; */
+    __asm__ volatile("movl %esi, 0x00(%ecx)");                                /* prev->context.eflags = %eflags; */
+    __asm__ volatile("addl $4, %ecx");                                        /* %ecx = (&prev->context.eflags + 1); */
+    __asm__ volatile(".Lno_store_flags_registers:");                          /* else */
 #  endif
 
 #  if CCO_x86_ELIGIBLE_FOR_FXSR
@@ -389,47 +387,47 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
         "The value of CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS differs from the value of EXCHANGE_SSE_REGISTERS"
     );
     /* if(settings_make_fxsr_is_eligible(%ebx)) */
-    asm volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "|" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ebx");
-    asm volatile("jz .Lno_store_fpu_mmx_sse_registers"); /* then */
+    __asm__ volatile("test $(" __asm__STR(EXCHANGE_FPU_MMX_REGISTERS) "|" __asm__STR(EXCHANGE_SSE_REGISTERS) "), %ebx");
+    __asm__ volatile("jz .Lno_store_fpu_mmx_sse_registers"); /* then */
 #    if !CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
-    asm volatile("addl $4, %ecx"); /* %ecx = &prev->context.fxsr; // 16-byte aligned*/
+    __asm__ volatile("addl $4, %ecx"); /* %ecx = &prev->context.fxsr; // 16-byte aligned*/
 #    else
-    asm volatile("test $" ASMSTR(EXCHANGE_EFLAGS_REGISTER) ", %ebx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
-    asm volatile("jnz .Lno_pad_fxsr_storage");                        /* then */
-    asm volatile("addl $4, %ecx");                                    /* %ecx = &prev->context.fxsr; // 16-byte aligned */
-    asm volatile(".Lno_pad_fxsr_storage:");                           /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_EFLAGS_REGISTER) ", %ebx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
+    __asm__ volatile("jnz .Lno_pad_fxsr_storage");                            /* then */
+    __asm__ volatile("addl $4, %ecx");                                        /* %ecx = &prev->context.fxsr; // 16-byte aligned */
+    __asm__ volatile(".Lno_pad_fxsr_storage:");                               /* else */
 #    endif
-    asm volatile("pushl %edx");
-    if(cco_x86_has_fxsr) {               /* if (has_fxsr) */
-        asm volatile("fxsave (%ecx)");   /* fxsave(prev->context.fxsr); */
-        asm volatile("addl $512, %ecx"); /* %ecx = (&prev->context.eflags + 1); */
+    __asm__ volatile("pushl %edx");
+    if(cco_x86_has_fxsr) {                   /* if (has_fxsr) */
+        __asm__ volatile("fxsave (%ecx)");   /* fxsave(prev->context.fxsr); */
+        __asm__ volatile("addl $512, %ecx"); /* %ecx = (&prev->context.eflags + 1); */
     }
     else {
         // TODO: store FPU/MMX and SSE registers one by one
     }
-    asm volatile("popl %edx");
-    asm volatile(".Lno_store_fpu_mmx_sse_registers:");
+    __asm__ volatile("popl %edx");
+    __asm__ volatile(".Lno_store_fpu_mmx_sse_registers:");
 #  elif CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE
 #    define EXCHANGE_FPU_MMX_REGISTERS (1 << 1)
     _Static_assert(
         CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS == EXCHANGE_FPU_MMX_REGISTERS,
         "The value of CCO_SETTINGS_x86_EXCHANGE_FPU_MMX_REGISTERS differs from the value of EXCHANGE_FPU_MMX_REGISTERS"
     );
-    asm volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "), %ebx"); /* if(settings & exchange_fpu_mmx) */
-    asm volatile("jz .Lno_store_fpu_mmx_registers");                      /* then */
+    __asm__ volatile("test $(" __asm__STR(EXCHANGE_FPU_MMX_REGISTERS) "), %ebx"); /* if(settings & exchange_fpu_mmx) */
+    __asm__ volatile("jz .Lno_store_fpu_mmx_registers");                          /* then */
     // TODO: store FPU/MMX registers one by one
-    asm volatile(".Lno_store_fpu_mmx_registers:"); /* else */
+    __asm__ volatile(".Lno_store_fpu_mmx_registers:"); /* else */
 #  elif CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
 #    define EXCHANGE_SSE_REGISTERS (1 << 2)
     _Static_assert(
         CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS == EXCHANGE_SSE_REGISTERS,
         "The value of CCO_SETTINGS_x86_EXCHANGE_SSE_REGISTERS differs from the value of EXCHANGE_SSE_REGISTERS"
     );
-    asm volatile("test %(" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ebx"); /* if(settings & exchange_sse) */
-    asm volatile("jz .Lno_store_sse_registers");                      /* then */
+    __asm__ volatile("test %(" __asm__STR(EXCHANGE_SSE_REGISTERS) "), %ebx"); /* if(settings & exchange_sse) */
+    __asm__ volatile("jz .Lno_store_sse_registers");                          /* then */
     // TODO: store SSE registers one by one
-    // asm volatile("addl $128, %ecx");
-    asm volatile(".Lno_store_sse_registers:"); /* else */
+    // __asm__ volatile("addl $128, %ecx");
+    __asm__ volatile(".Lno_store_sse_registers:"); /* else */
 #  endif
 
 #  if CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE
@@ -439,16 +437,16 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
         "The value of CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS differs from the value of EXCHANGE_SEGMENT_REGISTERS"
     );
     /* if(settings & CCO_SETTINGS_x86_EXCHANGE_SEGMENT_REGISTERS) { */
-    asm volatile("test $" ASMSTR(EXCHANGE_SEGMENT_REGISTERS) ", %ebx"); /* if(settings & exchange_segment) */
-    asm volatile("jz .Lno_store_segment_registers");                    /* then */
-    asm volatile("movw %cs, 0x00(%ecx)");                               /* prev->context.cs = %cs; */
-    asm volatile("movw %ds, 0x02(%ecx)");                               /* prev->context.ds = %ds; */
-    asm volatile("movw %ss, 0x04(%ecx)");                               /* prev->context.ss = %ss; */
-    asm volatile("movw %es, 0x06(%ecx)");                               /* prev->context.es = %es; */
-    asm volatile("movw %fs, 0x08(%ecx)");                               /* prev->context.fs = %fs; */
-    asm volatile("movw %gs, 0x0a(%ecx)");                               /* prev->context.gs = %gs; */
-    asm volatile("addl $12, %ecx");                                     /* %ecx = (&prev->context.gs + 1); */
-    asm volatile(".Lno_store_segment_registers:");                      /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_SEGMENT_REGISTERS) ", %ebx"); /* if(settings & exchange_segment) */
+    __asm__ volatile("jz .Lno_store_segment_registers");                        /* then */
+    __asm__ volatile("movw %cs, 0x00(%ecx)");                                   /* prev->context.cs = %cs; */
+    __asm__ volatile("movw %ds, 0x02(%ecx)");                                   /* prev->context.ds = %ds; */
+    __asm__ volatile("movw %ss, 0x04(%ecx)");                                   /* prev->context.ss = %ss; */
+    __asm__ volatile("movw %es, 0x06(%ecx)");                                   /* prev->context.es = %es; */
+    __asm__ volatile("movw %fs, 0x08(%ecx)");                                   /* prev->context.fs = %fs; */
+    __asm__ volatile("movw %gs, 0x0a(%ecx)");                                   /* prev->context.gs = %gs; */
+    __asm__ volatile("addl $12, %ecx");                                         /* %ecx = (&prev->context.gs + 1); */
+    __asm__ volatile(".Lno_store_segment_registers:");                          /* else */
 #  endif
 
 #  if CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE
@@ -457,16 +455,16 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
         CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS == EXCHANGE_DEBUG_REGISTERS,
         "The value of CCO_SETTINGS_x86_EXCHANGE_DEBUG_REGISTERS differs from the value of EXCHANGE_DEBUG_REGISTERS"
     );
-    asm volatile("test $" ASMSTR(EXCHANGE_DEBUG_REGISTERS) ", %ebx"); /* if(settings & exchange_debug) */
-    asm volatile("jz .Lno_store_debug_registers");                    /* then */
-    asm volatile("movl %dr0, 0x00(%ecx)");                            /* prev->context.dr0 = %dr0; */
-    asm volatile("movl %dr1, 0x04(%ecx)");                            /* prev->context.dr1 = %dr1; */
-    asm volatile("movl %dr2, 0x08(%ecx)");                            /* prev->context.dr2 = %dr2; */
-    asm volatile("movl %dr3, 0x0c(%ecx)");                            /* prev->context.dr3 = %dr3; */
-    asm volatile("movl %dr6, 0x10(%ecx)");                            /* prev->context.dr6 = %dr6; */
-    asm volatile("movl %dr7, 0x14(%ecx)");                            /* prev->context.dr7 = %dr7; */
-    asm volatile("addl $24, %ecx");                                   /* %ecx = (&prev->context.dr7 + 1); */
-    asm volatile(".Lno_store_debug_registers:");                      /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_DEBUG_REGISTERS) ", %ebx"); /* if(settings & exchange_debug) */
+    __asm__ volatile("jz .Lno_store_debug_registers");                        /* then */
+    __asm__ volatile("movl %dr0, 0x00(%ecx)");                                /* prev->context.dr0 = %dr0; */
+    __asm__ volatile("movl %dr1, 0x04(%ecx)");                                /* prev->context.dr1 = %dr1; */
+    __asm__ volatile("movl %dr2, 0x08(%ecx)");                                /* prev->context.dr2 = %dr2; */
+    __asm__ volatile("movl %dr3, 0x0c(%ecx)");                                /* prev->context.dr3 = %dr3; */
+    __asm__ volatile("movl %dr6, 0x10(%ecx)");                                /* prev->context.dr6 = %dr6; */
+    __asm__ volatile("movl %dr7, 0x14(%ecx)");                                /* prev->context.dr7 = %dr7; */
+    __asm__ volatile("addl $24, %ecx");                                       /* %ecx = (&prev->context.dr7 + 1); */
+    __asm__ volatile(".Lno_store_debug_registers:");                          /* else */
 #  endif
 
 #  if CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
@@ -475,106 +473,106 @@ cco_cswitch(cco_coroutine* restrict prev, cco_coroutine* restrict next)
         CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS == EXCHANGE_CONTROL_REGISTERS,
         "The value of CCO_SETTINGS_x86_EXCHANGE_CONTROL_REGISTERS differs from the value of EXCHANGE_CONTROL_REGISTERS"
     );
-    asm volatile("test $" ASMSTR(EXCHANGE_CONTROL_REGISTERS) ", %ebx"); /* if(settings & exchange_control) */
-    asm volatile("jz .Lno_store_control_registers");                    /* then */
-    asm volatile("movl %cr0, 0x00(%ecx)");                              /* prev->context.cr0 = %cr0; */
-    asm volatile("movl %cr2, 0x04(%ecx)");                              /* prev->context.cr2 = %cr2; */
-    asm volatile("movl %cr3, 0x08(%ecx)");                              /* prev->context.cr3 = %cr3; */
-    asm volatile("movl %cr4, 0x0c(%ecx)");                              /* prev->context.cr4 = %cr4; */
-    asm volatile("movl %cr8, 0x10(%ecx)");                              /* prev->context.cr8 = %cr8; */
-    asm volatile(".Lno_store_control_registers:");                      /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_CONTROL_REGISTERS) ", %ebx"); /* if(settings & exchange_control) */
+    __asm__ volatile("jz .Lno_store_control_registers");                        /* then */
+    __asm__ volatile("movl %cr0, 0x00(%ecx)");                                  /* prev->context.cr0 = %cr0; */
+    __asm__ volatile("movl %cr2, 0x04(%ecx)");                                  /* prev->context.cr2 = %cr2; */
+    __asm__ volatile("movl %cr3, 0x08(%ecx)");                                  /* prev->context.cr3 = %cr3; */
+    __asm__ volatile("movl %cr4, 0x0c(%ecx)");                                  /* prev->context.cr4 = %cr4; */
+    __asm__ volatile("movl %cr8, 0x10(%ecx)");                                  /* prev->context.cr8 = %cr8; */
+    __asm__ volatile(".Lno_store_control_registers:");                          /* else */
 #  endif
 
 #  if !CCO_x86_BARE_CSWITCH
-    asm volatile("movl 4(%edx), %ecx"); /* %ecx = next->settings; */
+    __asm__ volatile("movl 4(%edx), %ecx"); /* %ecx = next->settings; */
 #  endif
     // TODO consider using pusha/popa
-    asm volatile("movl (%edx), %edx");                               /* %edx = next->context; */
-    asm volatile("movl 0x10(%edx), %esp");                           /* %esp = next->context.esp; */
-    asm volatile("movl 0x14(%edx), %edi \n\t movl %edi, 0x0(%esp)"); /* *%esp = next->context.eip; // for ret */
-    asm volatile("movl 0x0c(%edx), %ebp");                           /* %ebp = next->context.ebp; */
-    asm volatile("movl 0x08(%edx), %edi");                           /* %edi = next->context.edi; */
-    asm volatile("movl 0x04(%edx), %esi");                           /* %esi = next->context.esi; */
-    asm volatile("movl 0x00(%edx), %ebx");                           /* %ebx = next->context.ebx; */
+    __asm__ volatile("movl (%edx), %edx");                               /* %edx = next->context; */
+    __asm__ volatile("movl 0x10(%edx), %esp");                           /* %esp = next->context.esp; */
+    __asm__ volatile("movl 0x14(%edx), %edi \n\t movl %edi, 0x0(%esp)"); /* *%esp = next->context.eip; // for ret */
+    __asm__ volatile("movl 0x0c(%edx), %ebp");                           /* %ebp = next->context.ebp; */
+    __asm__ volatile("movl 0x08(%edx), %edi");                           /* %edi = next->context.edi; */
+    __asm__ volatile("movl 0x04(%edx), %esi");                           /* %esi = next->context.esi; */
+    __asm__ volatile("movl 0x00(%edx), %ebx");                           /* %ebx = next->context.ebx; */
 #  if !CCO_x86_BARE_CSWITCH
-    asm volatile("addl $28, %edx"); /* %edx = (&next->context.eip + 1); */
+    __asm__ volatile("addl $28, %edx"); /* %edx = (&next->context.eip + 1); */
 #  endif
 
 #  if CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
-    asm volatile("test $" ASMSTR(EXCHANGE_EFLAGS_REGISTER) ", %ecx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
-    asm volatile("jz .Lno_restore_flags_registers");                  /* then */
-    asm volatile("push (%edx)");                                      /* push(next->context.eflags); */
-    asm volatile("popf");                                             /* %eflags = pop(); */
-    asm volatile("addl $4, %edx");                                    /* %edx = (&next->context.eflags + 1); */
-    asm volatile(".Lno_restore_flags_registers:");                    /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_EFLAGS_REGISTER) ", %ecx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
+    __asm__ volatile("jz .Lno_restore_flags_registers");                      /* then */
+    __asm__ volatile("push (%edx)");                                          /* push(next->context.eflags); */
+    __asm__ volatile("popf");                                                 /* %eflags = pop(); */
+    __asm__ volatile("addl $4, %edx");                                        /* %edx = (&next->context.eflags + 1); */
+    __asm__ volatile(".Lno_restore_flags_registers:");                        /* else */
 #  endif
 
 #  if CCO_x86_ELIGIBLE_FOR_FXSR
-    asm volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "|" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ecx");
-    asm volatile("jz .Lno_restore_fpu_mmx_sse_registers");
+    __asm__ volatile("test $(" __asm__STR(EXCHANGE_FPU_MMX_REGISTERS) "|" __asm__STR(EXCHANGE_SSE_REGISTERS) "), %ecx");
+    __asm__ volatile("jz .Lno_restore_fpu_mmx_sse_registers");
 #    if !CCO_x86_ENABLE_EFLAGS_REGISTER_EXCHANGE
-    asm volatile("addl $4, %edx"); /* %edx = &next->context.fxsr; // 16-byte aligned */
+    __asm__ volatile("addl $4, %edx"); /* %edx = &next->context.fxsr; // 16-byte aligned */
 #    else
-    asm volatile("test $" ASMSTR(EXCHANGE_EFLAGS_REGISTER) ", %ecx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
-    asm volatile("jnz .Lno_pad_fxsr_restore");                        /* then */
-    asm volatile("addl $4, %edx");                                    /* %edx = &next->context.fxsr; // 16-byte aligned */
-    asm volatile(".Lno_pad_fxsr_restore:");                           /* else */
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_EFLAGS_REGISTER) ", %ecx"); /* if (settings & EXCHANGE_EFLAGS_REGISTER) */
+    __asm__ volatile("jnz .Lno_pad_fxsr_restore");                            /* then */
+    __asm__ volatile("addl $4, %edx");                                        /* %edx = &next->context.fxsr; // 16-byte aligned */
+    __asm__ volatile(".Lno_pad_fxsr_restore:");                               /* else */
 #    endif
     if(cco_x86_has_fxsr) {
-        asm volatile("fxrstor (%edx)");
-        asm volatile("addl $512, %edx");
+        __asm__ volatile("fxrstor (%edx)");
+        __asm__ volatile("addl $512, %edx");
     }
     else {
         // TODO: store FPU/MMX and SSE registers one by one
     }
-    asm volatile(".Lno_restore_fpu_mmx_sse_registers:");
+    __asm__ volatile(".Lno_restore_fpu_mmx_sse_registers:");
 #  elif CCO_x86_ENABLE_FPU_MMX_REGISTERS_EXCHANGE
-    asm volatile("test $(" ASMSTR(EXCHANGE_FPU_MMX_REGISTERS) "), %ecx");
-    asm volatile("jz .Lno_restore_fpu_mmx_registers");
-    asm volatile(".Lno_restore_fpu_mmx_registers:");
+    __asm__ volatile("test $(" __asm__STR(EXCHANGE_FPU_MMX_REGISTERS) "), %ecx");
+    __asm__ volatile("jz .Lno_restore_fpu_mmx_registers");
+    __asm__ volatile(".Lno_restore_fpu_mmx_registers:");
 #  elif CCO_x86_ENABLE_SSE_REGISTERS_EXCHANGE
-    asm volatile("test %(" ASMSTR(EXCHANGE_SSE_REGISTERS) "), %ecx");
-    asm volatile("jz .Lno_restore_sse_registers");
-    asm volatile(".Lno_restore_sse_registers:");
+    __asm__ volatile("test %(" __asm__STR(EXCHANGE_SSE_REGISTERS) "), %ecx");
+    __asm__ volatile("jz .Lno_restore_sse_registers");
+    __asm__ volatile(".Lno_restore_sse_registers:");
 #  endif
 
 #  if CCO_x86_ENABLE_SEGMENT_REGISTERS_EXCHANGE
-    asm volatile("test $" ASMSTR(EXCHANGE_SEGMENT_REGISTERS) ", %ecx");
-    asm volatile("jz .Lno_restore_segment_registers");
-    asm volatile("movw %cs, 0x00(%edx)"); /* prev->context.cs = %cs; */
-    asm volatile("movw %ds, 0x02(%edx)"); /* prev->context.ds = %ds; */
-    asm volatile("movw %ss, 0x04(%edx)"); /* prev->context.ss = %ss; */
-    asm volatile("movw %es, 0x06(%edx)"); /* prev->context.es = %es; */
-    asm volatile("movw %fs, 0x08(%edx)"); /* prev->context.fs = %fs; */
-    asm volatile("movw %gs, 0x0a(%edx)"); /* prev->context.gs = %gs; */
-    asm volatile("addl $12, %edx");       /* %ecx = (&prev->context.gs + 1); */
-    asm volatile(".Lno_restore_segment_registers:");
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_SEGMENT_REGISTERS) ", %ecx");
+    __asm__ volatile("jz .Lno_restore_segment_registers");
+    __asm__ volatile("movw %cs, 0x00(%edx)"); /* prev->context.cs = %cs; */
+    __asm__ volatile("movw %ds, 0x02(%edx)"); /* prev->context.ds = %ds; */
+    __asm__ volatile("movw %ss, 0x04(%edx)"); /* prev->context.ss = %ss; */
+    __asm__ volatile("movw %es, 0x06(%edx)"); /* prev->context.es = %es; */
+    __asm__ volatile("movw %fs, 0x08(%edx)"); /* prev->context.fs = %fs; */
+    __asm__ volatile("movw %gs, 0x0a(%edx)"); /* prev->context.gs = %gs; */
+    __asm__ volatile("addl $12, %edx");       /* %ecx = (&prev->context.gs + 1); */
+    __asm__ volatile(".Lno_restore_segment_registers:");
 #  endif
 
 #  if CCO_x86_ENABLE_DEBUG_REGISTERS_EXCHANGE
-    asm volatile("test $" ASMSTR(EXCHANGE_DEBUG_REGISTERS) ", %ecx");
-    asm volatile("jz .Lno_restore_debug_registers");
-    asm volatile("movl %dr0, 0x00(%edx)"); /* prev->context.dr0 = %dr0; */
-    asm volatile("movl %dr1, 0x04(%edx)"); /* prev->context.dr1 = %dr1; */
-    asm volatile("movl %dr2, 0x08(%edx)"); /* prev->context.dr2 = %dr2; */
-    asm volatile("movl %dr3, 0x0c(%edx)"); /* prev->context.dr3 = %dr3; */
-    asm volatile("movl %dr6, 0x10(%edx)"); /* prev->context.dr6 = %dr6; */
-    asm volatile("movl %dr7, 0x14(%edx)"); /* prev->context.dr7 = %dr7; */
-    asm volatile("addl $24, %edx");        /* %ecx = (&prev->context.dr7 + 1); */
-    asm volatile(".Lno_restore_debug_registers:");
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_DEBUG_REGISTERS) ", %ecx");
+    __asm__ volatile("jz .Lno_restore_debug_registers");
+    __asm__ volatile("movl %dr0, 0x00(%edx)"); /* prev->context.dr0 = %dr0; */
+    __asm__ volatile("movl %dr1, 0x04(%edx)"); /* prev->context.dr1 = %dr1; */
+    __asm__ volatile("movl %dr2, 0x08(%edx)"); /* prev->context.dr2 = %dr2; */
+    __asm__ volatile("movl %dr3, 0x0c(%edx)"); /* prev->context.dr3 = %dr3; */
+    __asm__ volatile("movl %dr6, 0x10(%edx)"); /* prev->context.dr6 = %dr6; */
+    __asm__ volatile("movl %dr7, 0x14(%edx)"); /* prev->context.dr7 = %dr7; */
+    __asm__ volatile("addl $24, %edx");        /* %ecx = (&prev->context.dr7 + 1); */
+    __asm__ volatile(".Lno_restore_debug_registers:");
 #  endif
 
 #  if CCO_x86_ENABLE_CONTROL_REGISTERS_EXCHANGE
-    asm volatile("test $" ASMSTR(EXCHANGE_CONTROL_REGISTERS) ", %ecx");
-    asm volatile("jz .Lno_restore_control_registers");
-    asm volatile("movl %cr0, 0x00(%edx)"); /* prev->context.cr0 = %cr0; */
-    asm volatile("movl %cr2, 0x04(%edx)"); /* prev->context.cr2 = %cr2; */
-    asm volatile("movl %cr3, 0x08(%edx)"); /* prev->context.cr3 = %cr3; */
-    asm volatile("movl %cr4, 0x0c(%edx)"); /* prev->context.cr4 = %cr4; */
-    asm volatile("movl %cr8, 0x10(%edx)"); /* prev->context.cr8 = %cr8; */
-    asm volatile(".Lno_restore_control_registers:");
+    __asm__ volatile("test $" __asm__STR(EXCHANGE_CONTROL_REGISTERS) ", %ecx");
+    __asm__ volatile("jz .Lno_restore_control_registers");
+    __asm__ volatile("movl %cr0, 0x00(%edx)"); /* prev->context.cr0 = %cr0; */
+    __asm__ volatile("movl %cr2, 0x04(%edx)"); /* prev->context.cr2 = %cr2; */
+    __asm__ volatile("movl %cr3, 0x08(%edx)"); /* prev->context.cr3 = %cr3; */
+    __asm__ volatile("movl %cr4, 0x0c(%edx)"); /* prev->context.cr4 = %cr4; */
+    __asm__ volatile("movl %cr8, 0x10(%edx)"); /* prev->context.cr8 = %cr8; */
+    __asm__ volatile(".Lno_restore_control_registers:");
 #  endif
-    asm volatile("ret");
+    __asm__ volatile("ret");
 #elif defined(_MSC_VER)
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
 #else
@@ -591,11 +589,11 @@ cco_cpu_context_init()
 #endif
 
 CCO_PRIVATE always_inline uint8_t*
-cco_current_stack_pointer()
+cco_current_stack_pointer(void)
 {
 #if defined(__GNUC__) || defined(__clang__)
     uint8_t* sp;
-    asm volatile("mov %%esp, %0" : "=r"(sp));
+    __asm__ volatile("mov %%esp, %0" : "=r"(sp));
     return sp;
 #elif defined(_MSC_VER)
     return (uint8_t*)_AddressOfReturnAddress();

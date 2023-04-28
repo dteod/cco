@@ -154,7 +154,7 @@ CCO_API bool cco_coroutine_start(cco_coroutine* coroutine, cco_coroutine_callbac
  * 
  * @retval CCO_OK
  */
-CCO_API cco_coroutine* cco_this_coroutine();
+CCO_API cco_coroutine* cco_this_coroutine(void);
 
 /**
  * @brief Unschedules the current coroutine returning control to the caller and stores the given value.
@@ -185,7 +185,7 @@ CCO_API void cco_return(void* value);
  * @retval CCO_OK
  * @retval CCO_ERROR_INVALID_CONTEXT
  */
-CCO_API void cco_suspend();
+CCO_API void cco_suspend(void);
 
 /**
  * @brief Resumes the execution of the given coroutine.
@@ -341,7 +341,7 @@ typedef enum {
     CCO_COROUTINE_STATE_RUNNING,     /**< It is currently running. */
 } cco_coroutine_state;
 
-CCO_API const char* const cco_coroutine_state_strings[];
+CCO_API const char* const cco_coroutine_state_strings[4];
 
 /**
  * @brief Returns the coroutine's execution state.

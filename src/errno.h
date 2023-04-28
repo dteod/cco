@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-cco_error* cco_errno_location();
+cco_error* cco_errno_location(void);
 
 #ifdef __cplusplus
 }

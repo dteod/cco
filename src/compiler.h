@@ -52,9 +52,11 @@
 #endif
 
 #if defined(__GNUC__) || defined(__clang__) || defined(__ICC) || defined(__INTEL_COMPILER)
-#  define naked __attribute__((naked))
+#  define naked  __attribute__((naked))
+#  define unused __attribute__((unused))
 #elif defined(_MSC_VER)
-#  define naked __declspec(naked)
+#  define naked  __declspec(naked)
+#  define unused __pragma(warning(suppress: 4100))
 #else
 #  error Unsupported compiler
 #endif

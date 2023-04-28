@@ -17,7 +17,7 @@
  */
 
 int
-main()
+main(void)
 {
     // TODO: add a test for the x86 architecture
 }

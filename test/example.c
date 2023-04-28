@@ -59,7 +59,7 @@ hello_loop(void* arg)
 }
 
 int
-main()
+main(void)
 {
     for(int i = 0; i != 2; ++i) {
         /*  Values below 4096 crash when trying to use printf. I suspect printf allocates some buffer on the stack,
