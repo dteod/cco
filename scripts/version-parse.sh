@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-# This file is part of ezargs, a simple command-line argument parser
+# This file is part of cco, coroutine library for C.
 # Copyright (C) 2023, Domenico Teodonio
 
 # This library is free software; you can redistribute it and/or
